@@ -11,7 +11,8 @@
     version: 1,
     settings: {
       currency: "COP",
-      payday: 0, // día del mes en que recibes ingreso principal (0 = sin definir)
+      payday: 0, // (heredado) día de pago único
+      paydays: [], // días de pago de nómina (ej. [15, 30] para quincenal)
       bufferPct: 0.1, // colchón de seguridad sobre gasto mensual
       savingsGoalPct: 0.1, // meta de ahorro
       onboarded: false,
@@ -24,7 +25,9 @@
         "Salud", "Educación", "Entretenimiento", "Suscripciones", "Otros",
       ],
     },
-    transactions: [], // {id, type, amount, category, date, note, recurring}
+    // medios de pago / cuentas (dónde está el dinero)
+    accounts: ["Efectivo", "Cuenta bancaria"],
+    transactions: [], // {id, type, amount, category, account, date, note, recurring}
     debts: [], // {id, name, creditor, total, remaining, apr, minPayment, dueDay}
   };
 
@@ -72,6 +75,7 @@
       type: t.type === "income" ? "income" : "expense",
       amount: Math.abs(+t.amount || 0),
       category: t.category || "Otros",
+      account: t.account || "Efectivo",
       date: t.date || window.Fmt.ymd(window.Fmt.hoy()),
       note: t.note || "",
       recurring: !!t.recurring,
@@ -132,7 +136,7 @@
   }
 
   // Registrar un abono a una deuda: descuenta del saldo y crea un gasto.
-  function payDebt(id, amount) {
+  function payDebt(id, amount, account) {
     const d = get().debts.find((x) => x.id === id);
     if (!d) return;
     const amt = Math.abs(+amount || 0);
@@ -141,9 +145,24 @@
       type: "expense",
       amount: amt,
       category: "Pago deuda",
+      account: account || "Cuenta bancaria",
       note: `Abono: ${d.name}`,
     });
     // addTransaction ya llama save()
+  }
+
+  // ---- Cuentas / medios de pago ----
+  function addAccount(name) {
+    name = (name || "").trim();
+    const accs = get().accounts || (state.accounts = []);
+    if (name && !accs.some((a) => a.toLowerCase() === name.toLowerCase())) {
+      accs.push(name); save();
+    }
+    return accs;
+  }
+  function removeAccount(name) {
+    state.accounts = (get().accounts || []).filter((a) => a !== name);
+    save();
   }
 
   // ---- Settings ----
@@ -184,6 +203,7 @@
     load, save, get, uid, setKey,
     addTransaction, updateTransaction, deleteTransaction,
     addDebt, updateDebt, deleteDebt, payDebt,
+    addAccount, removeAccount,
     updateSettings, setOnboarded,
     exportJSON, importJSON, reset,
   };

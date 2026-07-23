@@ -30,6 +30,16 @@
     return m[cat] || (/* fallback */ "📦");
   };
 
+  const accIcon = (acc) => {
+    const a = (acc || "").toLowerCase();
+    if (a.includes("efectivo")) return "💵";
+    if (a.includes("banc") || a.includes("cuenta")) return "🏦";
+    if (a.includes("tarjeta") || a.includes("crédito") || a.includes("credito")) return "💳";
+    if (a.includes("ahorro")) return "🐷";
+    if (a.includes("nequi") || a.includes("daviplata") || a.includes("billetera")) return "📱";
+    return "💰";
+  };
+
   // ---------- Navegación ----------
   const screens = ["inicio", "movimientos", "deudas", "agente", "ajustes"];
 
@@ -84,11 +94,22 @@
           <div style="flex:1">
             <div class="title">${a.canSpend ? "Sí puedes gastar" : "Mejor no gastes ahora"}</div>
             <div class="desc">${a.canSpend
-              ? "Después de reservar tus pagos y colchón, te queda:"
+              ? (a.nextPayday ? `Hasta tu próximo pago (${F.fecha(a.nextPayday)}), después de tus obligaciones y colchón:` : "Después de reservar tus pagos y colchón, te queda:")
               : "Necesitas ese dinero para tus próximos pagos y colchón."}</div>
             <div class="big">${a.canSpend ? F.money(a.safeToSpend) : F.money(Math.abs(a.safeToSpend)) + " en rojo"}</div>
           </div>
         </div>
+
+        ${a.accountBalances && a.accountBalances.length ? `
+        <div class="card tight">
+          ${a.accountBalances.map((ac) => `
+            <div class="list-item">
+              <div class="avatar">${accIcon(ac.name)}</div>
+              <div class="li-main"><div class="li-title">${esc(ac.name)}</div></div>
+              <div class="li-amount ${ac.amount >= 0 ? "income" : "expense"}">${F.money(ac.amount)}</div>
+            </div>`).join("")}
+          ${a.nextPayday ? `<div class="list-item"><div class="avatar">🗓️</div><div class="li-main"><div class="li-title">Próxima nómina</div><div class="li-sub">${F.relativo(a.daysToPayday)}</div></div><div class="li-amount">${F.fecha(a.nextPayday)}</div></div>` : ""}
+        </div>` : ""}
 
         <div class="card health">
           <div class="ring" style="--p:${hc.score || 0};--ring-color:${ringColor}">
@@ -159,7 +180,7 @@
                 <div class="avatar">${catIcon(t.category)}</div>
                 <div class="li-main">
                   <div class="li-title">${esc(t.note || t.category)}</div>
-                  <div class="li-sub">${esc(t.category)}${t.recurring ? " · 🔁 recurrente" : ""}</div>
+                  <div class="li-sub">${esc(t.category)} · ${accIcon(t.account)} ${esc(t.account || "Efectivo")}${t.recurring ? " · 🔁" : ""}</div>
                 </div>
                 <div class="li-amount ${t.type}">${t.type === "income" ? "+" : "−"}${F.money(t.amount)}</div>
               </div>`).join("")}
@@ -253,6 +274,17 @@
         <div class="kpi"><div class="k">Ahorro del mes</div><div class="v ${a.savingsRate >= 0 ? "good" : "bad"}">${F.pct(a.savingsRate)}</div></div>
       </div>
 
+      ${a.accountBalances && a.accountBalances.length ? `
+      <div class="section-title">Saldos por cuenta</div>
+      <div class="card tight">
+        ${a.accountBalances.map((ac) => `
+          <div class="list-item">
+            <div class="avatar">${accIcon(ac.name)}</div>
+            <div class="li-main"><div class="li-title">${esc(ac.name)}</div></div>
+            <div class="li-amount ${ac.amount >= 0 ? "income" : "expense"}">${F.money(ac.amount)}</div>
+          </div>`).join("")}
+      </div>` : ""}
+
       <div class="section-title">Alertas</div>
       ${a.alerts.map(alertCard).join("")}
 
@@ -303,18 +335,29 @@
   function screenAjustes() {
     const s = S.get();
     return `<div class="screen active" id="s-ajustes">
-      <div class="section-title">Preferencias</div>
+      <div class="section-title">Días de pago (nómina)</div>
       <div class="card">
-        <div class="field">
-          <label>Día de pago principal (nómina)</label>
-          <input type="number" min="0" max="31" id="set-payday" value="${s.settings.payday || ""}" placeholder="Ej: 30">
-          <div class="hint">Ayuda al agente a planear entre quincenas.</div>
+        <p class="small muted" style="margin-top:0">¿Qué días te pagan? Si es quincenal, pon los dos (ej. 15 y 30). El agente los usa para planear entre pagos.</p>
+        <div class="field-row">
+          <div class="field"><label>Día de pago 1</label>
+            <input type="number" min="1" max="31" id="set-pay1" value="${(s.settings.paydays && s.settings.paydays[0]) || s.settings.payday || ""}" placeholder="Ej: 15"></div>
+          <div class="field"><label>Día de pago 2</label>
+            <input type="number" min="1" max="31" id="set-pay2" value="${(s.settings.paydays && s.settings.paydays[1]) || ""}" placeholder="Ej: 30"></div>
         </div>
         <div class="field">
           <label>Meta de ahorro mensual (%)</label>
           <input type="number" min="0" max="90" id="set-savings" value="${Math.round((s.settings.savingsGoalPct || 0.1) * 100)}">
         </div>
         <button class="btn primary" data-savesettings="1">Guardar</button>
+      </div>
+
+      <div class="section-title">Cuentas / medios de pago</div>
+      <div class="card">
+        <p class="small muted" style="margin-top:0">Dónde tienes tu dinero. Cada movimiento se marca con una de estas.</p>
+        <div class="chips" style="margin-bottom:12px">
+          ${(s.accounts || []).map((a) => `<span class="chip" style="cursor:default">${accIcon(a)} ${esc(a)} ${(s.accounts.length > 1) ? `<span class="link" data-delacc="${esc(a)}" style="margin-left:6px">✕</span>` : ""}</span>`).join("")}
+        </div>
+        <button class="btn secondary block" data-addacc="1">➕ Agregar cuenta (ej. Nequi, Ahorros)</button>
       </div>
 
       ${window.Auth ? `
@@ -397,8 +440,10 @@
   function txSheet(type, txId) {
     const s = S.get();
     const editing = txId ? s.transactions.find((t) => t.id === txId) : null;
-    const t = editing || { type, amount: "", category: "", date: F.ymd(F.hoy()), note: "", recurring: false };
+    const t = editing || { type, amount: "", category: "", account: "", date: F.ymd(F.hoy()), note: "", recurring: false };
     const cats = s.categories[t.type];
+    const accts = (s.accounts && s.accounts.length) ? s.accounts : ["Efectivo", "Cuenta bancaria"];
+    const curAcc = t.account || accts[0];
 
     openSheet(`
       <h2>${editing ? "Editar" : (t.type === "income" ? "Nuevo ingreso" : "Nuevo gasto")}</h2>
@@ -414,6 +459,12 @@
         <label>Categoría</label>
         <div class="chips" id="tx-cats">
           ${cats.map((c) => `<button class="chip ${t.category === c ? "active" : ""}" data-cat="${esc(c)}">${catIcon(c)} ${esc(c)}</button>`).join("")}
+        </div>
+      </div>
+      <div class="field">
+        <label>${t.type === "income" ? "¿A dónde entra?" : "¿Con qué pagaste?"}</label>
+        <div class="chips" id="tx-accs">
+          ${accts.map((a) => `<button class="chip ${curAcc === a ? "active" : ""}" data-acc="${esc(a)}">${accIcon(a)} ${esc(a)}</button>`).join("")}
         </div>
       </div>
       <div class="field">
@@ -433,11 +484,17 @@
 
     let selType = t.type;
     let selCat = t.category || cats[0];
+    let selAcc = curAcc;
     // marcar cat inicial si vacía
     if (!t.category) {
       const first = overlay.querySelector(`[data-cat="${cats[0]}"]`);
       first && first.classList.add("active");
     }
+    overlay.querySelector("#tx-accs").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-acc]"); if (!b) return;
+      overlay.querySelectorAll("#tx-accs .chip").forEach((c) => c.classList.remove("active"));
+      b.classList.add("active"); selAcc = b.dataset.acc;
+    });
 
     overlay.querySelector("#tx-type").addEventListener("click", (e) => {
       const b = e.target.closest("[data-t]"); if (!b) return;
@@ -454,7 +511,7 @@
       const amount = F.parseMoney(overlay.querySelector("#tx-amount").value);
       if (amount <= 0) { overlay.querySelector("#tx-amount").focus(); return; }
       const data = {
-        type: selType, amount, category: selCat,
+        type: selType, amount, category: selCat, account: selAcc,
         note: overlay.querySelector("#tx-note").value,
         date: overlay.querySelector("#tx-date").value,
         recurring: overlay.querySelector("#tx-rec").checked,
@@ -517,20 +574,33 @@
   }
 
   function paySheet(debtId) {
-    const d = S.get().debts.find((x) => x.id === debtId);
+    const s = S.get();
+    const d = s.debts.find((x) => x.id === debtId);
     if (!d) return;
+    const accts = (s.accounts && s.accounts.length) ? s.accounts : ["Efectivo", "Cuenta bancaria"];
+    let selAcc = accts.includes("Cuenta bancaria") ? "Cuenta bancaria" : accts[0];
     openSheet(`
       <h2>Abono a ${esc(d.name)}</h2>
       <p class="muted small" style="margin-top:-8px">Saldo actual: <b>${F.money(d.remaining)}</b></p>
       <div class="field amount"><label>Monto del abono</label>
         <input type="text" inputmode="numeric" id="pay-amt" value="${d.minPayment ? F.num(d.minPayment) : ""}" placeholder="$ 0" autofocus></div>
-      <div class="hint" style="margin:-6px 0 14px">Se descuenta del saldo y se registra como gasto "Pago deuda".</div>
+      <div class="field"><label>¿Con qué pagaste?</label>
+        <div class="chips" id="pay-accs">
+          ${accts.map((a) => `<button class="chip ${selAcc === a ? "active" : ""}" data-acc="${esc(a)}">${accIcon(a)} ${esc(a)}</button>`).join("")}
+        </div>
+      </div>
+      <div class="alert info" style="margin-bottom:14px"><div class="ico">✅</div><div class="a-text">No tienes que anotarlo aparte: esto <b>baja el saldo de la deuda</b> y se registra solo como gasto "Pago deuda".</div></div>
       <button class="btn primary" id="pay-go">Registrar abono</button>
     `);
+    overlay.querySelector("#pay-accs").addEventListener("click", (e) => {
+      const b = e.target.closest("[data-acc]"); if (!b) return;
+      overlay.querySelectorAll("#pay-accs .chip").forEach((c) => c.classList.remove("active"));
+      b.classList.add("active"); selAcc = b.dataset.acc;
+    });
     overlay.querySelector("#pay-go").addEventListener("click", () => {
       const amt = F.parseMoney(overlay.querySelector("#pay-amt").value);
       if (amt <= 0) return;
-      S.payDebt(debtId, amt);
+      S.payDebt(debtId, amt, selAcc);
       closeSheet(); render();
     });
   }
@@ -597,11 +667,27 @@
     const debtCard = t.closest(".debt-card"); // no-op, uses buttons
 
     if (t.closest("[data-savesettings]")) {
+      const p1 = +document.getElementById("set-pay1").value || 0;
+      const p2 = +document.getElementById("set-pay2").value || 0;
+      const paydays = [p1, p2].filter((d) => d >= 1 && d <= 31);
       S.updateSettings({
-        payday: +document.getElementById("set-payday").value || 0,
+        paydays,
         savingsGoalPct: (+document.getElementById("set-savings").value || 10) / 100,
       });
-      flash("Guardado ✅"); return;
+      flash("Guardado ✅"); render(); return;
+    }
+    const addacc = t.closest("[data-addacc]");
+    if (addacc) {
+      const name = prompt("Nombre de la cuenta o medio de pago (ej. Nequi, Ahorros, Tarjeta):");
+      if (name && name.trim()) { S.addAccount(name.trim()); render(); }
+      return;
+    }
+    const delacc = t.closest("[data-delacc]");
+    if (delacc) {
+      if (confirm(`¿Quitar "${delacc.dataset.delacc}" de tus cuentas? (No borra los movimientos)`)) {
+        S.removeAccount(delacc.dataset.delacc); render();
+      }
+      return;
     }
     if (t.closest("[data-changepw]")) return changePwSheet();
     if (t.closest("[data-adduser]")) return addUserSheet();

@@ -16,6 +16,14 @@
     return arr.reduce((a, x) => a + (f ? f(x) : x), 0);
   }
 
+  // Próxima fecha de nómina dada una lista de días del mes (ej. [15, 30]).
+  function nextPaydayDate(paydays, desde) {
+    const days = (paydays || []).map((n) => +n).filter((n) => n >= 1 && n <= 31);
+    if (!days.length) return null;
+    const dates = days.map((d) => nextDueDate(d, desde));
+    return dates.sort((a, b) => a - b)[0];
+  }
+
   // Próxima fecha de vencimiento (día del mes) a partir de "desde".
   function nextDueDate(dueDay, desde) {
     const base = desde || F.hoy();
@@ -46,6 +54,16 @@
     const totalIncome = sum(tx.filter((t) => t.type === "income"), (t) => t.amount);
     const totalExpense = sum(tx.filter((t) => t.type === "expense"), (t) => t.amount);
     const balance = totalIncome - totalExpense;
+
+    // Saldo por cuenta / medio de pago (efectivo, banco, etc.)
+    const accMap = {};
+    (s.accounts || []).forEach((a) => { accMap[a] = 0; });
+    tx.forEach((t) => {
+      const a = t.account || "Efectivo";
+      if (!(a in accMap)) accMap[a] = 0;
+      accMap[a] += t.type === "income" ? t.amount : -t.amount;
+    });
+    const accountBalances = Object.entries(accMap).map(([name, amount]) => ({ name, amount }));
 
     // Mes actual
     const monthTx = tx.filter((t) => inMonth(t.date, ref));
@@ -96,9 +114,19 @@
     const next30 = upcoming.filter((u) => u.dias >= 0 && u.dias <= 30);
     const oblig30 = sum(next30, (u) => u.amount);
 
+    // ---- Próxima nómina (quincenal o mensual) ----
+    const nextPayday = nextPaydayDate(s.settings.paydays, ref);
+    const daysToPayday = nextPayday ? F.diasEntre(ref, nextPayday) : null;
+
     // ---- ¿Puedo gastar? ----
+    // Reservamos las obligaciones que caen antes de tu próximo pago de nómina
+    // (si está configurado); si no, usamos la ventana de 30 días.
+    const windowEnd = nextPayday || null;
+    const obligWindow = windowEnd
+      ? sum(upcoming.filter((u) => u.due <= windowEnd && u.dias >= 0), (u) => u.amount)
+      : oblig30;
     const buffer = Math.max(refExpense * (s.settings.bufferPct || 0), 0);
-    const reserve = oblig30 + buffer;
+    const reserve = obligWindow + buffer;
     const safeToSpend = balance - reserve;
     const canSpend = safeToSpend > 0;
 
@@ -126,7 +154,9 @@
       totalDebt, totalMinPayments, debtToIncome, debtToIncomeTotal,
       byRate, bySize,
       upcoming, next30, oblig30,
+      nextPayday, daysToPayday, obligWindow,
       buffer, reserve, safeToSpend, canSpend,
+      accountBalances,
       categories,
     };
 
@@ -392,5 +422,5 @@
     };
   }
 
-  window.Advisor = { analyze, simulatePayoff, nextDueDate };
+  window.Advisor = { analyze, simulatePayoff, nextDueDate, nextPaydayDate };
 })();
