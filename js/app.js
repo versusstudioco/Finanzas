@@ -317,6 +317,22 @@
         <button class="btn primary" data-savesettings="1">Guardar</button>
       </div>
 
+      ${window.Auth ? `
+      <div class="section-title">Seguridad</div>
+      <div class="card">
+        ${window.Auth.isEnabled() ? `
+          <p class="small muted" style="margin-top:0">Acceso protegido para <b>${esc((window.Auth.getAuth() || {}).user || "")}</b>. Te pide la contraseña cada vez que abres la app.</p>
+          <button class="btn secondary block" data-changepw="1">🔑 Cambiar contraseña</button>
+          <div class="btn-row">
+            <button class="btn ghost sm" data-locknow="1">🔒 Bloquear ahora</button>
+            <button class="btn danger sm" data-removelock="1">Quitar candado</button>
+          </div>
+        ` : `
+          <p class="small muted" style="margin-top:0">No tienes candado. Actívalo para pedir usuario y contraseña al abrir.</p>
+          <button class="btn secondary block" data-setuplock="1">🔒 Activar usuario y contraseña</button>
+        `}
+      </div>` : ""}
+
       <div class="section-title">Tus datos</div>
       <div class="card">
         <p class="small muted" style="margin-top:0">Todo se guarda solo en este dispositivo. Haz una copia para no perderla.</p>
@@ -523,6 +539,56 @@
     });
   }
 
+  function changePwSheet() {
+    openSheet(`
+      <h2>Cambiar contraseña</h2>
+      <div class="field"><label>Contraseña actual</label>
+        <input type="password" id="cp-cur" inputmode="numeric" autocomplete="current-password" autofocus></div>
+      <div class="field"><label>Nueva contraseña</label>
+        <input type="password" id="cp-new" inputmode="numeric" autocomplete="new-password"></div>
+      <div class="field"><label>Repite la nueva</label>
+        <input type="password" id="cp-new2" inputmode="numeric" autocomplete="new-password"></div>
+      <div class="lock-error" id="cp-err" style="min-height:18px"></div>
+      <button class="btn primary" id="cp-go">Guardar</button>
+    `);
+    overlay.querySelector("#cp-go").addEventListener("click", async () => {
+      const cur = overlay.querySelector("#cp-cur").value;
+      const nw = overlay.querySelector("#cp-new").value;
+      const nw2 = overlay.querySelector("#cp-new2").value;
+      const err = overlay.querySelector("#cp-err");
+      if (nw !== nw2) { err.textContent = "Las contraseñas no coinciden."; return; }
+      const r = await window.Auth.changePassword(cur, nw);
+      if (!r.ok) { err.textContent = r.msg; return; }
+      closeSheet(); flash("Contraseña actualizada ✅");
+    });
+  }
+
+  function setupPwSheet() {
+    openSheet(`
+      <h2>Activar candado</h2>
+      <div class="field"><label>Usuario</label>
+        <input type="text" id="su-user" value="Vero" autocapitalize="none" autocomplete="username"></div>
+      <div class="field"><label>Contraseña</label>
+        <input type="password" id="su-pw" inputmode="numeric" autocomplete="new-password"></div>
+      <div class="field"><label>Repite la contraseña</label>
+        <input type="password" id="su-pw2" inputmode="numeric" autocomplete="new-password"></div>
+      <div class="lock-error" id="su-err" style="min-height:18px"></div>
+      <button class="btn primary" id="su-go">Activar 🔒</button>
+    `);
+    overlay.querySelector("#su-go").addEventListener("click", async () => {
+      const user = overlay.querySelector("#su-user").value.trim();
+      const pw = overlay.querySelector("#su-pw").value;
+      const pw2 = overlay.querySelector("#su-pw2").value;
+      const err = overlay.querySelector("#su-err");
+      if (!user) { err.textContent = "Escribe un usuario."; return; }
+      if (pw.length < 2) { err.textContent = "La contraseña es muy corta."; return; }
+      if (pw !== pw2) { err.textContent = "Las contraseñas no coinciden."; return; }
+      window.Auth.setAuth({ user, hash: await window.Auth.hash(user, pw) });
+      window.Auth.markUnlocked();
+      closeSheet(); flash("Candado activado 🔒"); render();
+    });
+  }
+
   // ---------- Eventos globales (delegación) ----------
   document.addEventListener("click", (e) => {
     const t = e.target;
@@ -542,6 +608,15 @@
       });
       flash("Guardado ✅"); return;
     }
+    if (t.closest("[data-changepw]")) return changePwSheet();
+    if (t.closest("[data-locknow]")) return window.Auth.lockNow();
+    if (t.closest("[data-removelock]")) {
+      if (confirm("¿Quitar el candado? La app dejará de pedir contraseña al abrir.")) {
+        window.Auth.clearAuth(); flash("Candado desactivado"); render();
+      }
+      return;
+    }
+    if (t.closest("[data-setuplock]")) return setupPwSheet();
     if (t.closest("[data-export]")) return doExport();
     if (t.closest("[data-import]")) { document.getElementById("import-file").click(); return; }
     if (t.closest("[data-reset]")) {
@@ -599,7 +674,9 @@
   window.addEventListener("store:changed", () => {}); // el render se hace manualmente tras cada acción
 
   // ---------- Init ----------
-  navTo("inicio");
+  function boot() {
+    navTo("inicio");
+  }
 
   // registrar service worker (offline)
   if ("serviceWorker" in navigator) {
@@ -607,4 +684,7 @@
       navigator.serviceWorker.register("./sw.js").catch(() => {});
     });
   }
+
+  // Arranque con candado (usuario/contraseña) si está disponible
+  if (window.Auth) window.Auth.guard(boot); else boot();
 })();

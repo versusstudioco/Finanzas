@@ -281,6 +281,31 @@ html, body {
 .catbar .cb-track { height: 8px; background: var(--card-2); border-radius: 999px; overflow: hidden; }
 .catbar .cb-fill { height: 100%; background: linear-gradient(90deg, var(--expense), #c94f5a); }
 
+/* ---------- Lock screen ---------- */
+#lock-root {
+  position: fixed; inset: 0; z-index: 200;
+  background: radial-gradient(120% 80% at 50% 0%, #14261f 0%, var(--bg) 55%);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px calc(20px + env(safe-area-inset-right, 0px)) calc(24px + var(--safe-bottom)) calc(20px + env(safe-area-inset-left, 0px));
+}
+.lock-card {
+  width: 100%; max-width: 380px; text-align: center;
+  animation: fade .3s ease;
+}
+.lock-logo { display: flex; justify-content: center; margin-bottom: 16px; }
+.lock-logo img { border-radius: 18px; box-shadow: var(--shadow); }
+.lock-title { font-size: 26px; font-weight: 800; margin: 0 0 6px; letter-spacing: -0.5px; }
+.lock-sub { color: var(--muted); font-size: 14px; margin: 0 0 22px; }
+.lock-field { text-align: left; margin-bottom: 14px; }
+.lock-field label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+.lock-field input {
+  width: 100%; background: var(--bg-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 12px; padding: 14px; font-size: 17px; font-family: inherit; outline: none;
+}
+.lock-field input:focus { border-color: var(--accent); }
+.lock-error { color: var(--danger); font-size: 13.5px; min-height: 20px; margin-bottom: 6px; font-weight: 600; }
+.lock-btn { width: 100%; padding: 15px; font-size: 16px; margin-top: 4px; }
+
 .divider { height: 1px; background: var(--border); margin: 18px 0; }
 .link { color: var(--accent); font-weight: 600; cursor: pointer; }
 .muted { color: var(--muted); }

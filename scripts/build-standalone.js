@@ -9,10 +9,15 @@ const root = path.join(__dirname, "..");
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 
 const css = read("css/styles.css");
+
+// Inyecta el logo como data URI para que se vea sin archivos externos
+const iconDataUri = "data:image/svg+xml;base64," + Buffer.from(read("icons/icon.svg")).toString("base64");
+
 const js = [
   read("js/format.js"),
   read("js/store.js"),
   read("js/advisor.js"),
+  read("js/auth.js").split("./icons/icon.svg").join(iconDataUri),
   // en standalone no hay sw.js: quitamos el registro del service worker
   read("js/app.js").replace(/\/\/ registrar service worker[\s\S]*?\n {2}}\n/, "\n"),
 ].join("\n");
