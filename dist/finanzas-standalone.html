@@ -1697,6 +1697,16 @@ html, body {
   function screenAjustes() {
     const s = S.get();
     return `<div class="screen active" id="s-ajustes">
+      <div class="section-title">💰 Mi ahorro</div>
+      <div class="card">
+        <div class="field amount" style="margin-bottom:8px">
+          <label>Ahorro actual (fondo de emergencia)</label>
+          <input type="text" inputmode="numeric" id="set-savingsbal" value="${s.settings.savings ? F.num(s.settings.savings) : ""}" placeholder="$ 0">
+        </div>
+        <div class="hint" style="margin-bottom:14px">Cuánto tienes guardado hoy. El agente lo usa para decirte qué es lo mejor: seguir ahorrando, pagar deuda cara o invertir.</div>
+        <button class="btn primary" data-savesettings="1">Guardar ahorro</button>
+      </div>
+
       <div class="section-title">Días de pago (nómina)</div>
       <div class="card">
         <p class="small muted" style="margin-top:0">¿Qué días te pagan? Si es quincenal, pon los dos (ej. 15 y 30). El agente los usa para planear entre pagos.</p>
@@ -1705,11 +1715,6 @@ html, body {
             <input type="number" min="1" max="31" id="set-pay1" value="${(s.settings.paydays && s.settings.paydays[0]) || s.settings.payday || ""}" placeholder="Ej: 15"></div>
           <div class="field"><label>Día de pago 2</label>
             <input type="number" min="1" max="31" id="set-pay2" value="${(s.settings.paydays && s.settings.paydays[1]) || ""}" placeholder="Ej: 30"></div>
-        </div>
-        <div class="field">
-          <label>Mi ahorro actual (fondo de emergencia)</label>
-          <input type="text" inputmode="numeric" id="set-savingsbal" value="${s.settings.savings ? F.num(s.settings.savings) : ""}" placeholder="$ 0">
-          <div class="hint">Cuánto tienes guardado hoy. El agente lo usa para decirte qué es lo mejor: ahorrar, pagar deuda o invertir.</div>
         </div>
         <div class="field">
           <label>Meta de ahorro mensual (%)</label>
@@ -1758,7 +1763,7 @@ html, body {
           Se abrirá como una app y funcionará sin internet.
         </p>
       </div>
-      <div class="center muted small" style="margin-top:20px">Finanzas · v1 · hecho para ti 💚</div>
+      <div class="center muted small" style="margin-top:20px">Finanzas · versión 5 · hecho para ti 💚</div>
     </div>`;
   }
 
