@@ -472,6 +472,7 @@ html, body {
       currency: "COP",
       payday: 0, // (heredado) día de pago único
       paydays: [], // días de pago de nómina (ej. [15, 30] para quincenal)
+      savings: 0, // ahorro actual / fondo de emergencia
       bufferPct: 0.1, // colchón de seguridad sobre gasto mensual
       savingsGoalPct: 0.1, // meta de ahorro
       onboarded: false,
@@ -803,6 +804,12 @@ html, body {
     // Tasa de ahorro del mes
     const savingsRate = monthIncome > 0 ? monthNet / monthIncome : 0;
 
+    // ---- Ahorro / fondo de emergencia ----
+    const savings = Math.max(0, +s.settings.savings || 0);
+    const emergencyTarget = refExpense * 3; // meta mínima: 3 meses de gastos
+    const emergencyTargetFull = refExpense * 6; // ideal: 6 meses
+    const emergencyMonths = refExpense > 0 ? savings / refExpense : (savings > 0 ? 99 : 0);
+
     // Gasto por categoría (mes actual)
     const byCategory = {};
     monthTx.filter((t) => t.type === "expense").forEach((t) => {
@@ -827,6 +834,7 @@ html, body {
       nextPayday, daysToPayday, obligWindow,
       buffer, reserve, safeToSpend, canSpend,
       accountBalances,
+      savings, emergencyTarget, emergencyTargetFull, emergencyMonths,
       categories,
     };
 
@@ -939,22 +947,53 @@ html, body {
 
     let n = 1;
 
-    // 1. Fondo de emergencia si el colchón está en rojo
-    if (r.balance < r.buffer && r.refExpense > 0) {
-      P.push({
-        n: n++, icon: "🛟",
-        title: "Construye tu colchón de emergencia",
-        text: `Apunta a tener al menos ${F.money(r.buffer)} disponibles (10% de tu gasto mensual) antes de gastar en cosas no esenciales.`,
-      });
+    const worst = r.byRate[0];
+
+    // 1. Fondo de emergencia según tu ahorro actual
+    if (r.refExpense > 0) {
+      if (r.savings < r.refExpense) {
+        P.push({
+          n: n++, icon: "🛟",
+          title: "Arma un fondo de emergencia inicial",
+          text: `Tienes ${F.money(r.savings)} ahorrado (${r.emergencyMonths.toFixed(1)} meses de gastos). Primer objetivo: 1 mes = ${F.money(r.refExpense)}. Es tu red de seguridad antes de invertir o gastar de más.`,
+        });
+      } else if (r.savings < r.emergencyTarget) {
+        P.push({
+          n: n++, icon: "🛟",
+          title: "Sigue creciendo tu fondo de emergencia",
+          text: `Vas bien: ${F.money(r.savings)} (${r.emergencyMonths.toFixed(1)} meses). Apunta a 3 meses = ${F.money(r.emergencyTarget)}.`,
+        });
+      }
     }
 
-    // 2. Priorizar deuda de mayor tasa (avalancha)
+    // 2. Lo más rentable: usar excedente del ahorro para matar deuda cara
+    if (worst && worst.apr >= 20 && r.savings > r.refExpense) {
+      const surplus = r.savings - r.refExpense; // deja 1 mes de colchón
+      const useForDebt = Math.min(surplus, worst.remaining);
+      if (useForDebt > 0) {
+        P.push({
+          n: n++, icon: "🧮",
+          title: `Lo mejor para tu bolsillo: baja "${worst.name}" con parte del ahorro`,
+          text: `Esa deuda cuesta ${F.pct(worst.apr / 100)} al año, más de lo que rinde el ahorro. Dejando 1 mes de colchón (${F.money(r.refExpense)}), abonar ${F.money(useForDebt)} te ahorra ~${F.money(useForDebt * worst.apr / 100)}/año en intereses.`,
+        });
+      }
+    }
+
+    // 3. Priorizar deuda de mayor tasa (avalancha)
     if (r.byRate.length > 0) {
-      const worst = r.byRate[0];
       P.push({
         n: n++, icon: "🔥",
         title: `Ataca primero: ${worst.name}`,
         text: `Es tu deuda más cara (${F.pct(worst.apr / 100)} anual, saldo ${F.money(worst.remaining)}). Paga el mínimo en las demás y todo el excedente aquí. Ahorras más en intereses.`,
+      });
+    }
+
+    // 3b. Fondo sólido y sin deuda cara → invertir
+    if (r.savings >= r.emergencyTarget && (!worst || worst.apr < 15) && r.refExpense > 0) {
+      P.push({
+        n: n++, icon: "📈",
+        title: "Tu excedente ya puede crecer: considera invertir",
+        text: `Tienes ${r.emergencyMonths.toFixed(1)} meses de colchón y sin deuda cara. Lo que ahorres de más puede ir a inversión (CDT, fondos, etc.) para que no pierda valor con la inflación.`,
       });
     }
 
@@ -1014,10 +1053,11 @@ html, body {
     else if (r.debtToIncome < 0.36) score += 3;
     else if (r.debtToIncome < 0.5) score -= 10;
     else score -= 20;
-    // colchón
-    if (r.balance >= r.refExpense * 3) score += 15;
-    else if (r.balance >= r.refExpense) score += 8;
-    else if (r.balance >= r.buffer) score += 2;
+    // colchón / fondo de emergencia (ahorro)
+    if (r.emergencyMonths >= 6) score += 18;
+    else if (r.emergencyMonths >= 3) score += 12;
+    else if (r.emergencyMonths >= 1) score += 5;
+    else if (r.savings > 0 || r.balance >= r.buffer) score += 1;
     else score -= 10;
     // fondos para pagos
     if (r.oblig30 > 0 && r.balance < r.oblig30) score -= 15;
@@ -1429,7 +1469,7 @@ html, body {
           <div>
             <div class="h-label">Salud financiera: ${hc.label}</div>
             <div class="h-sub">${a.debtToIncome > 0 ? "Carga de deuda: " + F.pct(a.debtToIncome) + " del ingreso" : "Sin deudas activas 🎉"}</div>
-            <div class="h-sub">Ahorro del mes: ${F.pct(a.savingsRate)}</div>
+            <div class="h-sub">Fondo de emergencia: ${a.savings > 0 ? F.money(a.savings) + " (" + a.emergencyMonths.toFixed(1) + " meses)" : "sin registrar"}</div>
           </div>
         </div>
 
@@ -1596,6 +1636,17 @@ html, body {
           </div>`).join("")}
       </div>` : ""}
 
+      ${a.refExpense > 0 ? `
+      <div class="section-title">Fondo de emergencia</div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <div><div class="d-rem">${F.money(a.savings)}</div><div class="d-cred">${a.emergencyMonths.toFixed(1)} de 3 meses recomendados</div></div>
+          <div class="tag ${a.emergencyMonths >= 3 ? "" : "hot"}">${a.emergencyMonths >= 6 ? "Excelente" : a.emergencyMonths >= 3 ? "Sólido" : a.emergencyMonths >= 1 ? "En camino" : "Bajo"}</div>
+        </div>
+        <div class="progress" style="margin-top:12px"><span style="width:${Math.min(100, (a.emergencyMonths / 3) * 100).toFixed(0)}%"></span></div>
+        <div class="hint">Meta 3 meses: ${F.money(a.emergencyTarget)} · Ideal 6 meses: ${F.money(a.emergencyTargetFull)}. ${a.savings === 0 ? "Registra tu ahorro en Ajustes para un mejor análisis." : ""}</div>
+      </div>` : ""}
+
       <div class="section-title">Alertas</div>
       ${a.alerts.map(alertCard).join("")}
 
@@ -1654,6 +1705,11 @@ html, body {
             <input type="number" min="1" max="31" id="set-pay1" value="${(s.settings.paydays && s.settings.paydays[0]) || s.settings.payday || ""}" placeholder="Ej: 15"></div>
           <div class="field"><label>Día de pago 2</label>
             <input type="number" min="1" max="31" id="set-pay2" value="${(s.settings.paydays && s.settings.paydays[1]) || ""}" placeholder="Ej: 30"></div>
+        </div>
+        <div class="field">
+          <label>Mi ahorro actual (fondo de emergencia)</label>
+          <input type="text" inputmode="numeric" id="set-savingsbal" value="${s.settings.savings ? F.num(s.settings.savings) : ""}" placeholder="$ 0">
+          <div class="hint">Cuánto tienes guardado hoy. El agente lo usa para decirte qué es lo mejor: ahorrar, pagar deuda o invertir.</div>
         </div>
         <div class="field">
           <label>Meta de ahorro mensual (%)</label>
@@ -1983,6 +2039,7 @@ html, body {
       const paydays = [p1, p2].filter((d) => d >= 1 && d <= 31);
       S.updateSettings({
         paydays,
+        savings: F.parseMoney(document.getElementById("set-savingsbal").value),
         savingsGoalPct: (+document.getElementById("set-savings").value || 10) / 100,
       });
       flash("Guardado ✅"); render(); return;

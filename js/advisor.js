@@ -133,6 +133,12 @@
     // Tasa de ahorro del mes
     const savingsRate = monthIncome > 0 ? monthNet / monthIncome : 0;
 
+    // ---- Ahorro / fondo de emergencia ----
+    const savings = Math.max(0, +s.settings.savings || 0);
+    const emergencyTarget = refExpense * 3; // meta mínima: 3 meses de gastos
+    const emergencyTargetFull = refExpense * 6; // ideal: 6 meses
+    const emergencyMonths = refExpense > 0 ? savings / refExpense : (savings > 0 ? 99 : 0);
+
     // Gasto por categoría (mes actual)
     const byCategory = {};
     monthTx.filter((t) => t.type === "expense").forEach((t) => {
@@ -157,6 +163,7 @@
       nextPayday, daysToPayday, obligWindow,
       buffer, reserve, safeToSpend, canSpend,
       accountBalances,
+      savings, emergencyTarget, emergencyTargetFull, emergencyMonths,
       categories,
     };
 
@@ -269,22 +276,53 @@
 
     let n = 1;
 
-    // 1. Fondo de emergencia si el colchón está en rojo
-    if (r.balance < r.buffer && r.refExpense > 0) {
-      P.push({
-        n: n++, icon: "🛟",
-        title: "Construye tu colchón de emergencia",
-        text: `Apunta a tener al menos ${F.money(r.buffer)} disponibles (10% de tu gasto mensual) antes de gastar en cosas no esenciales.`,
-      });
+    const worst = r.byRate[0];
+
+    // 1. Fondo de emergencia según tu ahorro actual
+    if (r.refExpense > 0) {
+      if (r.savings < r.refExpense) {
+        P.push({
+          n: n++, icon: "🛟",
+          title: "Arma un fondo de emergencia inicial",
+          text: `Tienes ${F.money(r.savings)} ahorrado (${r.emergencyMonths.toFixed(1)} meses de gastos). Primer objetivo: 1 mes = ${F.money(r.refExpense)}. Es tu red de seguridad antes de invertir o gastar de más.`,
+        });
+      } else if (r.savings < r.emergencyTarget) {
+        P.push({
+          n: n++, icon: "🛟",
+          title: "Sigue creciendo tu fondo de emergencia",
+          text: `Vas bien: ${F.money(r.savings)} (${r.emergencyMonths.toFixed(1)} meses). Apunta a 3 meses = ${F.money(r.emergencyTarget)}.`,
+        });
+      }
     }
 
-    // 2. Priorizar deuda de mayor tasa (avalancha)
+    // 2. Lo más rentable: usar excedente del ahorro para matar deuda cara
+    if (worst && worst.apr >= 20 && r.savings > r.refExpense) {
+      const surplus = r.savings - r.refExpense; // deja 1 mes de colchón
+      const useForDebt = Math.min(surplus, worst.remaining);
+      if (useForDebt > 0) {
+        P.push({
+          n: n++, icon: "🧮",
+          title: `Lo mejor para tu bolsillo: baja "${worst.name}" con parte del ahorro`,
+          text: `Esa deuda cuesta ${F.pct(worst.apr / 100)} al año, más de lo que rinde el ahorro. Dejando 1 mes de colchón (${F.money(r.refExpense)}), abonar ${F.money(useForDebt)} te ahorra ~${F.money(useForDebt * worst.apr / 100)}/año en intereses.`,
+        });
+      }
+    }
+
+    // 3. Priorizar deuda de mayor tasa (avalancha)
     if (r.byRate.length > 0) {
-      const worst = r.byRate[0];
       P.push({
         n: n++, icon: "🔥",
         title: `Ataca primero: ${worst.name}`,
         text: `Es tu deuda más cara (${F.pct(worst.apr / 100)} anual, saldo ${F.money(worst.remaining)}). Paga el mínimo en las demás y todo el excedente aquí. Ahorras más en intereses.`,
+      });
+    }
+
+    // 3b. Fondo sólido y sin deuda cara → invertir
+    if (r.savings >= r.emergencyTarget && (!worst || worst.apr < 15) && r.refExpense > 0) {
+      P.push({
+        n: n++, icon: "📈",
+        title: "Tu excedente ya puede crecer: considera invertir",
+        text: `Tienes ${r.emergencyMonths.toFixed(1)} meses de colchón y sin deuda cara. Lo que ahorres de más puede ir a inversión (CDT, fondos, etc.) para que no pierda valor con la inflación.`,
       });
     }
 
@@ -344,10 +382,11 @@
     else if (r.debtToIncome < 0.36) score += 3;
     else if (r.debtToIncome < 0.5) score -= 10;
     else score -= 20;
-    // colchón
-    if (r.balance >= r.refExpense * 3) score += 15;
-    else if (r.balance >= r.refExpense) score += 8;
-    else if (r.balance >= r.buffer) score += 2;
+    // colchón / fondo de emergencia (ahorro)
+    if (r.emergencyMonths >= 6) score += 18;
+    else if (r.emergencyMonths >= 3) score += 12;
+    else if (r.emergencyMonths >= 1) score += 5;
+    else if (r.savings > 0 || r.balance >= r.buffer) score += 1;
     else score -= 10;
     // fondos para pagos
     if (r.oblig30 > 0 && r.balance < r.oblig30) score -= 15;

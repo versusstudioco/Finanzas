@@ -13,6 +13,7 @@
       currency: "COP",
       payday: 0, // (heredado) día de pago único
       paydays: [], // días de pago de nómina (ej. [15, 30] para quincenal)
+      savings: 0, // ahorro actual / fondo de emergencia
       bufferPct: 0.1, // colchón de seguridad sobre gasto mensual
       savingsGoalPct: 0.1, // meta de ahorro
       onboarded: false,

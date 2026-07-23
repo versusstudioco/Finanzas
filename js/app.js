@@ -118,7 +118,7 @@
           <div>
             <div class="h-label">Salud financiera: ${hc.label}</div>
             <div class="h-sub">${a.debtToIncome > 0 ? "Carga de deuda: " + F.pct(a.debtToIncome) + " del ingreso" : "Sin deudas activas 🎉"}</div>
-            <div class="h-sub">Ahorro del mes: ${F.pct(a.savingsRate)}</div>
+            <div class="h-sub">Fondo de emergencia: ${a.savings > 0 ? F.money(a.savings) + " (" + a.emergencyMonths.toFixed(1) + " meses)" : "sin registrar"}</div>
           </div>
         </div>
 
@@ -285,6 +285,17 @@
           </div>`).join("")}
       </div>` : ""}
 
+      ${a.refExpense > 0 ? `
+      <div class="section-title">Fondo de emergencia</div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <div><div class="d-rem">${F.money(a.savings)}</div><div class="d-cred">${a.emergencyMonths.toFixed(1)} de 3 meses recomendados</div></div>
+          <div class="tag ${a.emergencyMonths >= 3 ? "" : "hot"}">${a.emergencyMonths >= 6 ? "Excelente" : a.emergencyMonths >= 3 ? "Sólido" : a.emergencyMonths >= 1 ? "En camino" : "Bajo"}</div>
+        </div>
+        <div class="progress" style="margin-top:12px"><span style="width:${Math.min(100, (a.emergencyMonths / 3) * 100).toFixed(0)}%"></span></div>
+        <div class="hint">Meta 3 meses: ${F.money(a.emergencyTarget)} · Ideal 6 meses: ${F.money(a.emergencyTargetFull)}. ${a.savings === 0 ? "Registra tu ahorro en Ajustes para un mejor análisis." : ""}</div>
+      </div>` : ""}
+
       <div class="section-title">Alertas</div>
       ${a.alerts.map(alertCard).join("")}
 
@@ -343,6 +354,11 @@
             <input type="number" min="1" max="31" id="set-pay1" value="${(s.settings.paydays && s.settings.paydays[0]) || s.settings.payday || ""}" placeholder="Ej: 15"></div>
           <div class="field"><label>Día de pago 2</label>
             <input type="number" min="1" max="31" id="set-pay2" value="${(s.settings.paydays && s.settings.paydays[1]) || ""}" placeholder="Ej: 30"></div>
+        </div>
+        <div class="field">
+          <label>Mi ahorro actual (fondo de emergencia)</label>
+          <input type="text" inputmode="numeric" id="set-savingsbal" value="${s.settings.savings ? F.num(s.settings.savings) : ""}" placeholder="$ 0">
+          <div class="hint">Cuánto tienes guardado hoy. El agente lo usa para decirte qué es lo mejor: ahorrar, pagar deuda o invertir.</div>
         </div>
         <div class="field">
           <label>Meta de ahorro mensual (%)</label>
@@ -672,6 +688,7 @@
       const paydays = [p1, p2].filter((d) => d >= 1 && d <= 31);
       S.updateSettings({
         paydays,
+        savings: F.parseMoney(document.getElementById("set-savingsbal").value),
         savingsGoalPct: (+document.getElementById("set-savings").value || 10) / 100,
       });
       flash("Guardado ✅"); render(); return;
@@ -758,10 +775,27 @@
     navTo("inicio");
   }
 
-  // registrar service worker (offline)
+  // registrar service worker (offline) + auto-actualización
   if ("serviceWorker" in navigator) {
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloading = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (hadController && !reloading) { reloading = true; location.reload(); }
+    });
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js").catch(() => {});
+      navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
+        .then((reg) => {
+          reg.update();
+          reg.addEventListener("updatefound", () => {
+            const nw = reg.installing;
+            nw && nw.addEventListener("statechange", () => {
+              if (nw.state === "installed" && navigator.serviceWorker.controller) {
+                nw.postMessage("skipWaiting");
+              }
+            });
+          });
+        })
+        .catch(() => {});
     });
   }
 
