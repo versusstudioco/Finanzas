@@ -413,7 +413,17 @@
           <button class="btn secondary sm" data-adduser="1">➕ Agregar usuario</button>
           <button class="btn ghost sm" data-switchuser="1">🔄 Cambiar de usuario</button>
         </div>
-        ${window.Auth.count() > 1 ? `<p class="small muted mt16">Usuarios en este teléfono: ${window.Auth.listUsers().map((u) => esc(u)).join(", ")}</p>` : ""}
+        <div class="divider"></div>
+        <div class="d-cred" style="margin-bottom:8px">Usuarios en este teléfono</div>
+        ${window.Auth.listProfiles().map((pr) => `
+          <div class="list-item">
+            <div class="avatar">👤</div>
+            <div class="li-main"><div class="li-title">${esc(pr.user)}${pr.id === window.Auth.getActiveId() ? " (tú)" : ""}</div></div>
+            ${pr.id === window.Auth.getActiveId()
+              ? `<span class="small muted">sesión actual</span>`
+              : `<button class="btn danger sm" style="flex:0 0 auto;padding:7px 12px" data-deluser="${pr.id}" data-delusername="${esc(pr.user)}">Eliminar</button>`}
+          </div>`).join("")}
+        <div class="hint">Para eliminar el usuario en el que estás ahora, primero cambia a otro (🔄) y elimínalo desde ahí.</div>
       </div>` : ""}
 
       <div class="section-title">Tus datos</div>
@@ -435,7 +445,7 @@
           Se abrirá como una app y funcionará sin internet.
         </p>
       </div>
-      <div class="center muted small" style="margin-top:20px">Finanzas · versión 6 · hecho para ti 💚</div>
+      <div class="center muted small" style="margin-top:20px">Finanzas · versión 7 · hecho para ti 💚</div>
     </div>`;
   }
 
@@ -736,6 +746,15 @@
     }
     if (t.closest("[data-changepw]")) return changePwSheet();
     if (t.closest("[data-adduser]")) return addUserSheet();
+    const deluser = t.closest("[data-deluser]");
+    if (deluser) {
+      const uname = deluser.dataset.delusername || "ese usuario";
+      if (confirm(`¿Eliminar a "${uname}"? Se borrarán TODOS sus datos (movimientos, deudas, ahorro). Esto no se puede deshacer.`)) {
+        window.Auth.deleteProfile(deluser.dataset.deluser);
+        flash(`Usuario "${uname}" eliminado`); render();
+      }
+      return;
+    }
     if (t.closest("[data-switchuser]")) {
       if (confirm("¿Cambiar de usuario? Se cerrará esta sesión y volverá a la pantalla de acceso.")) {
         window.Auth.lockNow();

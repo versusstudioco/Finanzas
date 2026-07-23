@@ -48,6 +48,7 @@
   }
 
   function listUsers() { return loadReg().profiles.map((p) => p.user); }
+  function listProfiles() { return loadReg().profiles.map((p) => ({ id: p.id, user: p.user })); }
   function count() { return loadReg().profiles.length; }
   function findByUser(user) {
     const u = (user || "").trim().toLowerCase();
@@ -208,6 +209,6 @@
 
   window.Auth = {
     guard, lockNow, changePassword, createProfile, deleteProfile,
-    getActiveUser, listUsers, count,
+    getActiveUser, getActiveId, listUsers, listProfiles, count,
   };
 })();
