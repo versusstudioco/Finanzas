@@ -799,6 +799,30 @@ html, body {
     const emergencyTargetFull = refExpense * 6; // ideal: 6 meses
     const emergencyMonths = refExpense > 0 ? savings / refExpense : (savings > 0 ? 99 : 0);
 
+    // ---- Plan de ahorro mensual ----
+    const goalPct = s.settings.savingsGoalPct || 0.1;
+    const baseIncome = monthIncome > 0 ? monthIncome : refIncome;
+    const monthlyTarget = baseIncome * goalPct; // cuánto deberías ahorrar este mes
+    const savedThisMonth = monthNet; // ingresos - gastos del mes = lo que te queda para ahorrar
+    const savingsProgress = monthlyTarget > 0 ? savedThisMonth / monthlyTarget : 0;
+    const savingsGap = Math.max(0, monthlyTarget - savedThisMonth); // lo que falta para la meta
+
+    // Historial mes a mes (últimos 6 meses con actividad)
+    const monthlyHistory = [];
+    for (let k = 5; k >= 0; k--) {
+      const r0 = new Date(ref.getFullYear(), ref.getMonth() - k, 1);
+      const inc = sum(tx.filter((t) => t.type === "income" && inMonth(t.date, r0)), (t) => t.amount);
+      const exp = sum(tx.filter((t) => t.type === "expense" && inMonth(t.date, r0)), (t) => t.amount);
+      if (inc === 0 && exp === 0) continue;
+      const net = inc - exp;
+      const target = inc * goalPct;
+      monthlyHistory.push({
+        label: F.MESES[r0.getMonth()].slice(0, 3),
+        income: inc, expense: exp, net, target,
+        met: inc > 0 && net >= target,
+      });
+    }
+
     // Gasto por categoría (mes actual)
     const byCategory = {};
     monthTx.filter((t) => t.type === "expense").forEach((t) => {
@@ -824,6 +848,7 @@ html, body {
       buffer, reserve, safeToSpend, canSpend,
       accountBalances,
       savings, emergencyTarget, emergencyTargetFull, emergencyMonths,
+      goalPct, monthlyTarget, savedThisMonth, savingsProgress, savingsGap, monthlyHistory,
       categories,
     };
 
@@ -1006,14 +1031,26 @@ html, body {
       });
     }
 
-    // 5. Meta de ahorro
-    if (r.refIncome > 0) {
-      const goal = r.refIncome * (s.settings.savingsGoalPct || 0.1);
-      P.push({
-        n: n++, icon: "🎯",
-        title: "Automatiza tu ahorro",
-        text: `Aparta ${F.money(goal)} (10% de tu ingreso) apenas te paguen, antes de gastar. Págate a ti primero.`,
-      });
+    // 5. Meta de ahorro de ESTE mes (con cifras reales)
+    if (r.monthlyTarget > 0) {
+      const pctLabel = F.pct(r.goalPct);
+      if (r.savedThisMonth >= r.monthlyTarget) {
+        P.push({
+          n: n++, icon: "🎉",
+          title: "¡Vas cumpliendo tu meta de ahorro!",
+          text: `Tu meta es ${F.money(r.monthlyTarget)}/mes (${pctLabel} de tu ingreso) y este mes llevas ${F.money(r.savedThisMonth)} de excedente. Aparta ese dinero a tu ahorro antes de gastarlo.`,
+        });
+      } else {
+        const topCat = r.categories[0];
+        const tip = topCat && topCat.amount > r.savingsGap
+          ? ` Si recortas ${F.money(r.savingsGap)} de "${topCat.name}" (hoy ${F.money(topCat.amount)}), llegas.`
+          : "";
+        P.push({
+          n: n++, icon: "🎯",
+          title: `Este mes deberías ahorrar ${F.money(r.monthlyTarget)}`,
+          text: `Es el ${pctLabel} de tu ingreso. Vas ${F.money(Math.max(0, r.savedThisMonth))}; te faltan ${F.money(r.savingsGap)}.${tip} Apártalo apenas te paguen, antes de gastar.`,
+        });
+      }
     }
 
     // 6. Si ya está saludable
@@ -1636,6 +1673,28 @@ html, body {
         <div class="hint">Meta 3 meses: ${F.money(a.emergencyTarget)} · Ideal 6 meses: ${F.money(a.emergencyTargetFull)}. ${a.savings === 0 ? "Registra tu ahorro en Ajustes para un mejor análisis." : ""}</div>
       </div>` : ""}
 
+      ${a.monthlyTarget > 0 ? `
+      <div class="section-title">Plan de ahorro mensual</div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <div><div class="d-cred">Este mes deberías ahorrar (${F.pct(a.goalPct)})</div><div class="d-rem">${F.money(a.monthlyTarget)}</div></div>
+          <div class="tag ${a.savedThisMonth >= a.monthlyTarget ? "" : "hot"}">${a.savedThisMonth >= a.monthlyTarget ? "✅ Cumplida" : "Vas " + F.money(Math.max(0, a.savedThisMonth))}</div>
+        </div>
+        <div class="progress" style="margin-top:12px"><span style="width:${Math.min(100, Math.max(0, a.savingsProgress * 100)).toFixed(0)}%"></span></div>
+        <div class="hint">${a.savedThisMonth >= a.monthlyTarget
+          ? `Ya cubriste tu meta este mes. Aparta ${F.money(a.monthlyTarget)} a tu ahorro. 🎉`
+          : `Te faltan ${F.money(a.savingsGap)} para tu meta. ${a.categories[0] ? `Podrías recortar de "${a.categories[0].name}".` : "Revisa tus gastos."}`}</div>
+        ${a.monthlyHistory.length > 1 ? `
+        <div class="divider"></div>
+        <div class="d-cred" style="margin-bottom:8px">Mes a mes (ahorrado vs meta)</div>
+        ${a.monthlyHistory.map((m) => `
+          <div class="list-item">
+            <div class="avatar">${m.met ? "✅" : "•"}</div>
+            <div class="li-main"><div class="li-title" style="text-transform:capitalize">${esc(m.label)}</div><div class="li-sub">meta ${F.money(m.target)}</div></div>
+            <div class="li-amount ${m.net >= 0 ? "income" : "expense"}">${F.money(m.net)}</div>
+          </div>`).join("")}` : ""}
+      </div>` : ""}
+
       <div class="section-title">Alertas</div>
       ${a.alerts.map(alertCard).join("")}
 
@@ -1692,8 +1751,13 @@ html, body {
           <label>Ahorro actual (fondo de emergencia)</label>
           <input type="text" inputmode="numeric" id="set-savingsbal" value="${s.settings.savings ? F.num(s.settings.savings) : ""}" placeholder="$ 0">
         </div>
-        <div class="hint" style="margin-bottom:14px">Cuánto tienes guardado hoy. El agente lo usa para decirte qué es lo mejor: seguir ahorrando, pagar deuda cara o invertir.</div>
-        <button class="btn primary" data-savesettings="1">Guardar ahorro</button>
+        <div class="hint" style="margin-bottom:14px">Cuánto tienes guardado hoy.</div>
+        <div class="field">
+          <label>¿Cuánto quieres ahorrar cada mes? (% de tu ingreso)</label>
+          <input type="number" min="0" max="90" id="set-savings" value="${Math.round((s.settings.savingsGoalPct || 0.1) * 100)}">
+          <div class="hint">Ej: 10%. El agente calculará mes a mes cuánto apartar según tus ingresos y te dirá si vas bien.</div>
+        </div>
+        <button class="btn primary" data-savesettings="1">Guardar</button>
       </div>
 
       <div class="section-title">Días de pago (nómina)</div>
@@ -1704,10 +1768,6 @@ html, body {
             <input type="number" min="1" max="31" id="set-pay1" value="${(s.settings.paydays && s.settings.paydays[0]) || s.settings.payday || ""}" placeholder="Ej: 15"></div>
           <div class="field"><label>Día de pago 2</label>
             <input type="number" min="1" max="31" id="set-pay2" value="${(s.settings.paydays && s.settings.paydays[1]) || ""}" placeholder="Ej: 30"></div>
-        </div>
-        <div class="field">
-          <label>Meta de ahorro mensual (%)</label>
-          <input type="number" min="0" max="90" id="set-savings" value="${Math.round((s.settings.savingsGoalPct || 0.1) * 100)}">
         </div>
         <button class="btn primary" data-savesettings="1">Guardar</button>
       </div>
@@ -1752,7 +1812,7 @@ html, body {
           Se abrirá como una app y funcionará sin internet.
         </p>
       </div>
-      <div class="center muted small" style="margin-top:20px">Finanzas · versión 5 · hecho para ti 💚</div>
+      <div class="center muted small" style="margin-top:20px">Finanzas · versión 6 · hecho para ti 💚</div>
     </div>`;
   }
 

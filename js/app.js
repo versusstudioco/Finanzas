@@ -296,6 +296,28 @@
         <div class="hint">Meta 3 meses: ${F.money(a.emergencyTarget)} · Ideal 6 meses: ${F.money(a.emergencyTargetFull)}. ${a.savings === 0 ? "Registra tu ahorro en Ajustes para un mejor análisis." : ""}</div>
       </div>` : ""}
 
+      ${a.monthlyTarget > 0 ? `
+      <div class="section-title">Plan de ahorro mensual</div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <div><div class="d-cred">Este mes deberías ahorrar (${F.pct(a.goalPct)})</div><div class="d-rem">${F.money(a.monthlyTarget)}</div></div>
+          <div class="tag ${a.savedThisMonth >= a.monthlyTarget ? "" : "hot"}">${a.savedThisMonth >= a.monthlyTarget ? "✅ Cumplida" : "Vas " + F.money(Math.max(0, a.savedThisMonth))}</div>
+        </div>
+        <div class="progress" style="margin-top:12px"><span style="width:${Math.min(100, Math.max(0, a.savingsProgress * 100)).toFixed(0)}%"></span></div>
+        <div class="hint">${a.savedThisMonth >= a.monthlyTarget
+          ? `Ya cubriste tu meta este mes. Aparta ${F.money(a.monthlyTarget)} a tu ahorro. 🎉`
+          : `Te faltan ${F.money(a.savingsGap)} para tu meta. ${a.categories[0] ? `Podrías recortar de "${a.categories[0].name}".` : "Revisa tus gastos."}`}</div>
+        ${a.monthlyHistory.length > 1 ? `
+        <div class="divider"></div>
+        <div class="d-cred" style="margin-bottom:8px">Mes a mes (ahorrado vs meta)</div>
+        ${a.monthlyHistory.map((m) => `
+          <div class="list-item">
+            <div class="avatar">${m.met ? "✅" : "•"}</div>
+            <div class="li-main"><div class="li-title" style="text-transform:capitalize">${esc(m.label)}</div><div class="li-sub">meta ${F.money(m.target)}</div></div>
+            <div class="li-amount ${m.net >= 0 ? "income" : "expense"}">${F.money(m.net)}</div>
+          </div>`).join("")}` : ""}
+      </div>` : ""}
+
       <div class="section-title">Alertas</div>
       ${a.alerts.map(alertCard).join("")}
 
@@ -352,8 +374,13 @@
           <label>Ahorro actual (fondo de emergencia)</label>
           <input type="text" inputmode="numeric" id="set-savingsbal" value="${s.settings.savings ? F.num(s.settings.savings) : ""}" placeholder="$ 0">
         </div>
-        <div class="hint" style="margin-bottom:14px">Cuánto tienes guardado hoy. El agente lo usa para decirte qué es lo mejor: seguir ahorrando, pagar deuda cara o invertir.</div>
-        <button class="btn primary" data-savesettings="1">Guardar ahorro</button>
+        <div class="hint" style="margin-bottom:14px">Cuánto tienes guardado hoy.</div>
+        <div class="field">
+          <label>¿Cuánto quieres ahorrar cada mes? (% de tu ingreso)</label>
+          <input type="number" min="0" max="90" id="set-savings" value="${Math.round((s.settings.savingsGoalPct || 0.1) * 100)}">
+          <div class="hint">Ej: 10%. El agente calculará mes a mes cuánto apartar según tus ingresos y te dirá si vas bien.</div>
+        </div>
+        <button class="btn primary" data-savesettings="1">Guardar</button>
       </div>
 
       <div class="section-title">Días de pago (nómina)</div>
@@ -364,10 +391,6 @@
             <input type="number" min="1" max="31" id="set-pay1" value="${(s.settings.paydays && s.settings.paydays[0]) || s.settings.payday || ""}" placeholder="Ej: 15"></div>
           <div class="field"><label>Día de pago 2</label>
             <input type="number" min="1" max="31" id="set-pay2" value="${(s.settings.paydays && s.settings.paydays[1]) || ""}" placeholder="Ej: 30"></div>
-        </div>
-        <div class="field">
-          <label>Meta de ahorro mensual (%)</label>
-          <input type="number" min="0" max="90" id="set-savings" value="${Math.round((s.settings.savingsGoalPct || 0.1) * 100)}">
         </div>
         <button class="btn primary" data-savesettings="1">Guardar</button>
       </div>
@@ -412,7 +435,7 @@
           Se abrirá como una app y funcionará sin internet.
         </p>
       </div>
-      <div class="center muted small" style="margin-top:20px">Finanzas · versión 5 · hecho para ti 💚</div>
+      <div class="center muted small" style="margin-top:20px">Finanzas · versión 6 · hecho para ti 💚</div>
     </div>`;
   }
 

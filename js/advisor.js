@@ -139,6 +139,30 @@
     const emergencyTargetFull = refExpense * 6; // ideal: 6 meses
     const emergencyMonths = refExpense > 0 ? savings / refExpense : (savings > 0 ? 99 : 0);
 
+    // ---- Plan de ahorro mensual ----
+    const goalPct = s.settings.savingsGoalPct || 0.1;
+    const baseIncome = monthIncome > 0 ? monthIncome : refIncome;
+    const monthlyTarget = baseIncome * goalPct; // cuánto deberías ahorrar este mes
+    const savedThisMonth = monthNet; // ingresos - gastos del mes = lo que te queda para ahorrar
+    const savingsProgress = monthlyTarget > 0 ? savedThisMonth / monthlyTarget : 0;
+    const savingsGap = Math.max(0, monthlyTarget - savedThisMonth); // lo que falta para la meta
+
+    // Historial mes a mes (últimos 6 meses con actividad)
+    const monthlyHistory = [];
+    for (let k = 5; k >= 0; k--) {
+      const r0 = new Date(ref.getFullYear(), ref.getMonth() - k, 1);
+      const inc = sum(tx.filter((t) => t.type === "income" && inMonth(t.date, r0)), (t) => t.amount);
+      const exp = sum(tx.filter((t) => t.type === "expense" && inMonth(t.date, r0)), (t) => t.amount);
+      if (inc === 0 && exp === 0) continue;
+      const net = inc - exp;
+      const target = inc * goalPct;
+      monthlyHistory.push({
+        label: F.MESES[r0.getMonth()].slice(0, 3),
+        income: inc, expense: exp, net, target,
+        met: inc > 0 && net >= target,
+      });
+    }
+
     // Gasto por categoría (mes actual)
     const byCategory = {};
     monthTx.filter((t) => t.type === "expense").forEach((t) => {
@@ -164,6 +188,7 @@
       buffer, reserve, safeToSpend, canSpend,
       accountBalances,
       savings, emergencyTarget, emergencyTargetFull, emergencyMonths,
+      goalPct, monthlyTarget, savedThisMonth, savingsProgress, savingsGap, monthlyHistory,
       categories,
     };
 
@@ -346,14 +371,26 @@
       });
     }
 
-    // 5. Meta de ahorro
-    if (r.refIncome > 0) {
-      const goal = r.refIncome * (s.settings.savingsGoalPct || 0.1);
-      P.push({
-        n: n++, icon: "🎯",
-        title: "Automatiza tu ahorro",
-        text: `Aparta ${F.money(goal)} (10% de tu ingreso) apenas te paguen, antes de gastar. Págate a ti primero.`,
-      });
+    // 5. Meta de ahorro de ESTE mes (con cifras reales)
+    if (r.monthlyTarget > 0) {
+      const pctLabel = F.pct(r.goalPct);
+      if (r.savedThisMonth >= r.monthlyTarget) {
+        P.push({
+          n: n++, icon: "🎉",
+          title: "¡Vas cumpliendo tu meta de ahorro!",
+          text: `Tu meta es ${F.money(r.monthlyTarget)}/mes (${pctLabel} de tu ingreso) y este mes llevas ${F.money(r.savedThisMonth)} de excedente. Aparta ese dinero a tu ahorro antes de gastarlo.`,
+        });
+      } else {
+        const topCat = r.categories[0];
+        const tip = topCat && topCat.amount > r.savingsGap
+          ? ` Si recortas ${F.money(r.savingsGap)} de "${topCat.name}" (hoy ${F.money(topCat.amount)}), llegas.`
+          : "";
+        P.push({
+          n: n++, icon: "🎯",
+          title: `Este mes deberías ahorrar ${F.money(r.monthlyTarget)}`,
+          text: `Es el ${pctLabel} de tu ingreso. Vas ${F.money(Math.max(0, r.savedThisMonth))}; te faltan ${F.money(r.savingsGap)}.${tip} Apártalo apenas te paguen, antes de gastar.`,
+        });
+      }
     }
 
     // 6. Si ya está saludable
