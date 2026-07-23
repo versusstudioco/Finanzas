@@ -2,7 +2,10 @@
 (function () {
   "use strict";
 
-  const KEY = "finanzas.v1";
+  let KEY = "finanzas.v1"; // se cambia por perfil (finanzas.data.<id>)
+
+  // Cambia el almacén activo (por perfil) y recarga sus datos
+  function setKey(k) { KEY = k; state = null; load(); }
 
   const DEFAULT = {
     version: 1,
@@ -178,7 +181,7 @@
   }
 
   window.Store = {
-    load, save, get, uid,
+    load, save, get, uid, setKey,
     addTransaction, updateTransaction, deleteTransaction,
     addDebt, updateDebt, deleteDebt, payDebt,
     updateSettings, setOnboarded,

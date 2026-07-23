@@ -318,19 +318,15 @@
       </div>
 
       ${window.Auth ? `
-      <div class="section-title">Seguridad</div>
+      <div class="section-title">Tu cuenta</div>
       <div class="card">
-        ${window.Auth.isEnabled() ? `
-          <p class="small muted" style="margin-top:0">Acceso protegido para <b>${esc((window.Auth.getAuth() || {}).user || "")}</b>. Te pide la contraseña cada vez que abres la app.</p>
-          <button class="btn secondary block" data-changepw="1">🔑 Cambiar contraseña</button>
-          <div class="btn-row">
-            <button class="btn ghost sm" data-locknow="1">🔒 Bloquear ahora</button>
-            <button class="btn danger sm" data-removelock="1">Quitar candado</button>
-          </div>
-        ` : `
-          <p class="small muted" style="margin-top:0">No tienes candado. Actívalo para pedir usuario y contraseña al abrir.</p>
-          <button class="btn secondary block" data-setuplock="1">🔒 Activar usuario y contraseña</button>
-        `}
+        <p class="small muted" style="margin-top:0">Sesión de <b>${esc(window.Auth.getActiveUser())}</b>. Cada usuario ve solo sus propias finanzas.</p>
+        <button class="btn secondary block" data-changepw="1">🔑 Cambiar mi contraseña</button>
+        <div class="btn-row">
+          <button class="btn secondary sm" data-adduser="1">➕ Agregar usuario</button>
+          <button class="btn ghost sm" data-switchuser="1">🔄 Cambiar de usuario</button>
+        </div>
+        ${window.Auth.count() > 1 ? `<p class="small muted mt16">Usuarios en este teléfono: ${window.Auth.listUsers().map((u) => esc(u)).join(", ")}</p>` : ""}
       </div>` : ""}
 
       <div class="section-title">Tus datos</div>
@@ -563,29 +559,28 @@
     });
   }
 
-  function setupPwSheet() {
+  function addUserSheet() {
     openSheet(`
-      <h2>Activar candado</h2>
+      <h2>Agregar usuario</h2>
+      <p class="small muted" style="margin-top:-8px">El nuevo usuario tendrá sus propias finanzas, separadas de las tuyas.</p>
       <div class="field"><label>Usuario</label>
-        <input type="text" id="su-user" value="Vero" autocapitalize="none" autocomplete="username"></div>
+        <input type="text" id="su-user" autocapitalize="none" autocomplete="username" placeholder="Ej: Michelle"></div>
       <div class="field"><label>Contraseña</label>
         <input type="password" id="su-pw" inputmode="numeric" autocomplete="new-password"></div>
       <div class="field"><label>Repite la contraseña</label>
         <input type="password" id="su-pw2" inputmode="numeric" autocomplete="new-password"></div>
       <div class="lock-error" id="su-err" style="min-height:18px"></div>
-      <button class="btn primary" id="su-go">Activar 🔒</button>
+      <button class="btn primary" id="su-go">Crear usuario 🔒</button>
     `);
     overlay.querySelector("#su-go").addEventListener("click", async () => {
       const user = overlay.querySelector("#su-user").value.trim();
       const pw = overlay.querySelector("#su-pw").value;
       const pw2 = overlay.querySelector("#su-pw2").value;
       const err = overlay.querySelector("#su-err");
-      if (!user) { err.textContent = "Escribe un usuario."; return; }
-      if (pw.length < 2) { err.textContent = "La contraseña es muy corta."; return; }
       if (pw !== pw2) { err.textContent = "Las contraseñas no coinciden."; return; }
-      window.Auth.setAuth({ user, hash: await window.Auth.hash(user, pw) });
-      window.Auth.markUnlocked();
-      closeSheet(); flash("Candado activado 🔒"); render();
+      const r = await window.Auth.createProfile(user, pw);
+      if (!r.ok) { err.textContent = r.msg; return; }
+      closeSheet(); flash(`Usuario "${user}" creado ✅`); render();
     });
   }
 
@@ -609,14 +604,13 @@
       flash("Guardado ✅"); return;
     }
     if (t.closest("[data-changepw]")) return changePwSheet();
-    if (t.closest("[data-locknow]")) return window.Auth.lockNow();
-    if (t.closest("[data-removelock]")) {
-      if (confirm("¿Quitar el candado? La app dejará de pedir contraseña al abrir.")) {
-        window.Auth.clearAuth(); flash("Candado desactivado"); render();
+    if (t.closest("[data-adduser]")) return addUserSheet();
+    if (t.closest("[data-switchuser]")) {
+      if (confirm("¿Cambiar de usuario? Se cerrará esta sesión y volverá a la pantalla de acceso.")) {
+        window.Auth.lockNow();
       }
       return;
     }
-    if (t.closest("[data-setuplock]")) return setupPwSheet();
     if (t.closest("[data-export]")) return doExport();
     if (t.closest("[data-import]")) { document.getElementById("import-file").click(); return; }
     if (t.closest("[data-reset]")) {
