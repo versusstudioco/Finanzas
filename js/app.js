@@ -25,7 +25,7 @@
       "Salario": "💼", "Freelance": "💻", "Ventas": "🛍️", "Otros ingresos": "➕",
       "Arriendo": "🏠", "Servicios": "💡", "Mercado": "🛒", "Transporte": "🚌",
       "Comida fuera": "🍔", "Salud": "🏥", "Educación": "📚", "Entretenimiento": "🎬",
-      "Suscripciones": "📺", "Pago deuda": "🏦", "Otros": "📦",
+      "Suscripciones": "📺", "Pago deuda": "🏦", "Ahorro": "🐷", "Otros": "📦",
     };
     return m[cat] || (/* fallback */ "📦");
   };
@@ -108,6 +108,7 @@
               <div class="li-main"><div class="li-title">${esc(ac.name)}</div></div>
               <div class="li-amount ${ac.amount >= 0 ? "income" : "expense"}">${F.money(ac.amount)}</div>
             </div>`).join("")}
+          ${a.savings > 0 ? `<div class="list-item"><div class="avatar">🐷</div><div class="li-main"><div class="li-title">Ahorro</div><div class="li-sub">guardado, no para gastar</div></div><div class="li-amount income">${F.money(a.savings)}</div></div>` : ""}
           ${a.nextPayday ? `<div class="list-item"><div class="avatar">🗓️</div><div class="li-main"><div class="li-title">Próxima nómina</div><div class="li-sub">${F.relativo(a.daysToPayday)}</div></div><div class="li-amount">${F.fecha(a.nextPayday)}</div></div>` : ""}
         </div>` : ""}
 
@@ -182,7 +183,7 @@
                   <div class="li-title">${esc(t.note || t.category)}</div>
                   <div class="li-sub">${esc(t.category)} · ${accIcon(t.account)} ${esc(t.account || "Efectivo")}${t.recurring ? " · 🔁" : ""}</div>
                 </div>
-                <div class="li-amount ${t.type}">${t.type === "income" ? "+" : "−"}${F.money(t.amount)}</div>
+                <div class="li-amount ${(t.type === "income" || t.type === "retiro") ? "income" : "expense"}">${(t.type === "income" || t.type === "retiro") ? "+" : "−"}${F.money(t.amount)}</div>
               </div>`).join("")}
           </div>`).join("");
 
@@ -190,6 +191,7 @@
       <div class="btn-row" style="margin-bottom:14px">
         <button class="btn secondary sm" data-quick="income">💵 Ingreso</button>
         <button class="btn secondary sm" data-quick="expense">🧾 Gasto</button>
+        <button class="btn secondary sm" data-quick="saving">🐷 Ahorro</button>
       </div>
       ${body}
     </div>`;
@@ -314,7 +316,7 @@
           <div class="list-item">
             <div class="avatar">${m.met ? "✅" : "•"}</div>
             <div class="li-main"><div class="li-title" style="text-transform:capitalize">${esc(m.label)}</div><div class="li-sub">meta ${F.money(m.target)}</div></div>
-            <div class="li-amount ${m.net >= 0 ? "income" : "expense"}">${F.money(m.net)}</div>
+            <div class="li-amount ${m.saved > 0 ? "income" : ""}">${F.money(m.saved)}</div>
           </div>`).join("")}` : ""}
       </div>` : ""}
 
@@ -371,10 +373,10 @@
       <div class="section-title">💰 Mi ahorro</div>
       <div class="card">
         <div class="field amount" style="margin-bottom:8px">
-          <label>Ahorro actual (fondo de emergencia)</label>
+          <label>Ahorro que ya tenías (inicial)</label>
           <input type="text" inputmode="numeric" id="set-savingsbal" value="${s.settings.savings ? F.num(s.settings.savings) : ""}" placeholder="$ 0">
         </div>
-        <div class="hint" style="margin-bottom:14px">Cuánto tienes guardado hoy.</div>
+        <div class="hint" style="margin-bottom:14px">Lo que tenías guardado antes de empezar. De aquí en adelante, para apartar plata usa el botón <b>+ → 🐷 Ahorro</b> en Movimientos: eso baja tu saldo y suma a tu ahorro. Total ahorro hoy: <b>${F.money(window.Advisor.analyze().savings)}</b>.</div>
         <div class="field">
           <label>¿Cuánto quieres ahorrar cada mes? (% de tu ingreso)</label>
           <input type="number" min="0" max="90" id="set-savings" value="${Math.round((s.settings.savingsGoalPct || 0.1) * 100)}">
@@ -445,7 +447,7 @@
           Se abrirá como una app y funcionará sin internet.
         </p>
       </div>
-      <div class="center muted small" style="margin-top:20px">Finanzas · versión 7 · hecho para ti 💚</div>
+      <div class="center muted small" style="margin-top:20px">Finanzas · versión 8 · hecho para ti 💚</div>
     </div>`;
   }
 
@@ -495,52 +497,69 @@
     const s = S.get();
     const editing = txId ? s.transactions.find((t) => t.id === txId) : null;
     const t = editing || { type, amount: "", category: "", account: "", date: F.ymd(F.hoy()), note: "", recurring: false };
-    const cats = s.categories[t.type];
+    const isSaving = t.type === "saving" || t.type === "retiro";
+    const cats = isSaving ? [] : (s.categories[t.type] || s.categories.expense);
     const accts = (s.accounts && s.accounts.length) ? s.accounts : ["Efectivo", "Cuenta bancaria"];
     const curAcc = t.account || accts[0];
 
+    const titleMap = { income: "Nuevo ingreso", expense: "Nuevo gasto", saving: "Aporte a ahorro", retiro: "Retiro de ahorro" };
+    const accLabel = t.type === "income" ? "¿A dónde entra?"
+      : t.type === "expense" ? "¿Con qué pagaste?"
+      : t.type === "saving" ? "¿De qué cuenta lo apartas?"
+      : "¿A qué cuenta vuelve?";
+
     openSheet(`
-      <h2>${editing ? "Editar" : (t.type === "income" ? "Nuevo ingreso" : "Nuevo gasto")}</h2>
+      <h2>${editing ? "Editar" : titleMap[t.type]}</h2>
       <div class="segmented" id="tx-type">
         <button data-t="income" class="${t.type === "income" ? "active" : ""}">💵 Ingreso</button>
         <button data-t="expense" class="${t.type === "expense" ? "active expense-active" : ""}">🧾 Gasto</button>
+        <button data-t="saving" class="${isSaving ? "active" : ""}">🐷 Ahorro</button>
       </div>
+      ${isSaving ? `
+      <div class="segmented" id="tx-savekind">
+        <button data-k="saving" class="${t.type === "saving" ? "active" : ""}">➕ Aporte (guardar)</button>
+        <button data-k="retiro" class="${t.type === "retiro" ? "active expense-active" : ""}">➖ Retiro (sacar)</button>
+      </div>` : ""}
       <div class="field amount">
         <label>Monto</label>
         <input type="text" inputmode="numeric" id="tx-amount" value="${t.amount ? F.num(t.amount) : ""}" placeholder="$ 0" autofocus>
       </div>
+      ${!isSaving ? `
       <div class="field">
         <label>Categoría</label>
         <div class="chips" id="tx-cats">
           ${cats.map((c) => `<button class="chip ${t.category === c ? "active" : ""}" data-cat="${esc(c)}">${catIcon(c)} ${esc(c)}</button>`).join("")}
         </div>
-      </div>
+      </div>` : `
+      <div class="alert info" style="margin-bottom:14px"><div class="ico">🐷</div><div class="a-text">${t.type === "saving"
+        ? "Este dinero <b>sale de tu saldo disponible</b> y suma a tu ahorro."
+        : "Este dinero <b>vuelve a tu saldo disponible</b> y baja de tu ahorro."}</div></div>`}
       <div class="field">
-        <label>${t.type === "income" ? "¿A dónde entra?" : "¿Con qué pagaste?"}</label>
+        <label>${accLabel}</label>
         <div class="chips" id="tx-accs">
           ${accts.map((a) => `<button class="chip ${curAcc === a ? "active" : ""}" data-acc="${esc(a)}">${accIcon(a)} ${esc(a)}</button>`).join("")}
         </div>
       </div>
       <div class="field">
         <label>Nota (opcional)</label>
-        <input type="text" id="tx-note" value="${esc(t.note)}" placeholder="Ej: mercado del mes">
+        <input type="text" id="tx-note" value="${esc(t.note)}" placeholder="${isSaving ? "Ej: ahorro del mes" : "Ej: mercado del mes"}">
       </div>
       <div class="field">
         <label>Fecha</label>
         <input type="date" id="tx-date" value="${t.date}">
       </div>
+      ${!isSaving ? `
       <label style="display:flex;align-items:center;gap:10px;margin-bottom:16px;color:var(--muted);font-size:14px">
         <input type="checkbox" id="tx-rec" ${t.recurring ? "checked" : ""} style="width:20px;height:20px"> 🔁 Es recurrente (cada mes)
-      </label>
+      </label>` : ""}
       <button class="btn primary" id="tx-save">${editing ? "Guardar cambios" : "Agregar"}</button>
       ${editing ? `<button class="btn danger block mt8" id="tx-del">Eliminar</button>` : ""}
     `);
 
     let selType = t.type;
-    let selCat = t.category || cats[0];
+    let selCat = isSaving ? "Ahorro" : (t.category || cats[0]);
     let selAcc = curAcc;
-    // marcar cat inicial si vacía
-    if (!t.category) {
+    if (!isSaving && !t.category) {
       const first = overlay.querySelector(`[data-cat="${cats[0]}"]`);
       first && first.classList.add("active");
     }
@@ -549,14 +568,18 @@
       overlay.querySelectorAll("#tx-accs .chip").forEach((c) => c.classList.remove("active"));
       b.classList.add("active"); selAcc = b.dataset.acc;
     });
-
     overlay.querySelector("#tx-type").addEventListener("click", (e) => {
       const b = e.target.closest("[data-t]"); if (!b) return;
-      selType = b.dataset.t;
-      // re-render chips
-      txSheet(selType, txId && editing && editing.type === selType ? txId : null);
+      const nt = b.dataset.t;
+      txSheet(nt, txId && editing && editing.type === nt ? txId : null);
     });
-    overlay.querySelector("#tx-cats").addEventListener("click", (e) => {
+    const sk = overlay.querySelector("#tx-savekind");
+    sk && sk.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-k]"); if (!b) return;
+      txSheet(b.dataset.k, txId && editing && editing.type === b.dataset.k ? txId : null);
+    });
+    const catsEl = overlay.querySelector("#tx-cats");
+    catsEl && catsEl.addEventListener("click", (e) => {
       const b = e.target.closest("[data-cat]"); if (!b) return;
       overlay.querySelectorAll("#tx-cats .chip").forEach((c) => c.classList.remove("active"));
       b.classList.add("active"); selCat = b.dataset.cat;
@@ -564,11 +587,14 @@
     overlay.querySelector("#tx-save").addEventListener("click", () => {
       const amount = F.parseMoney(overlay.querySelector("#tx-amount").value);
       if (amount <= 0) { overlay.querySelector("#tx-amount").focus(); return; }
+      const recEl = overlay.querySelector("#tx-rec");
       const data = {
-        type: selType, amount, category: selCat, account: selAcc,
+        type: selType, amount,
+        category: isSaving ? "Ahorro" : selCat,
+        account: selAcc,
         note: overlay.querySelector("#tx-note").value,
         date: overlay.querySelector("#tx-date").value,
-        recurring: overlay.querySelector("#tx-rec").checked,
+        recurring: recEl ? recEl.checked : false,
       };
       if (editing) S.updateTransaction(editing.id, data); else S.addTransaction(data);
       closeSheet(); render();

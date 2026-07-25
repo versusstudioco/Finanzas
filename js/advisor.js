@@ -53,7 +53,13 @@
     // Balance disponible (histórico): ingresos - gastos
     const totalIncome = sum(tx.filter((t) => t.type === "income"), (t) => t.amount);
     const totalExpense = sum(tx.filter((t) => t.type === "expense"), (t) => t.amount);
-    const balance = totalIncome - totalExpense;
+    // Aportes a ahorro (salen del saldo) y retiros (vuelven al saldo)
+    const totalSaved = sum(tx.filter((t) => t.type === "saving"), (t) => t.amount);
+    const totalWithdrawn = sum(tx.filter((t) => t.type === "retiro"), (t) => t.amount);
+    // Signo de cada movimiento sobre el saldo disponible
+    const sign = (t) => (t.type === "income" || t.type === "retiro") ? 1 : -1;
+    // Saldo disponible = lo que tienes para gastar (el ahorro ya salió)
+    const balance = totalIncome - totalExpense - totalSaved + totalWithdrawn;
 
     // Saldo por cuenta / medio de pago (efectivo, banco, etc.)
     const accMap = {};
@@ -61,7 +67,7 @@
     tx.forEach((t) => {
       const a = t.account || "Efectivo";
       if (!(a in accMap)) accMap[a] = 0;
-      accMap[a] += t.type === "income" ? t.amount : -t.amount;
+      accMap[a] += sign(t) * t.amount;
     });
     const accountBalances = Object.entries(accMap).map(([name, amount]) => ({ name, amount }));
 
@@ -134,7 +140,8 @@
     const savingsRate = monthIncome > 0 ? monthNet / monthIncome : 0;
 
     // ---- Ahorro / fondo de emergencia ----
-    const savings = Math.max(0, +s.settings.savings || 0);
+    const savingsBase = Math.max(0, +s.settings.savings || 0); // lo que ya tenías
+    const savings = Math.max(0, savingsBase + totalSaved - totalWithdrawn); // total actual
     const emergencyTarget = refExpense * 3; // meta mínima: 3 meses de gastos
     const emergencyTargetFull = refExpense * 6; // ideal: 6 meses
     const emergencyMonths = refExpense > 0 ? savings / refExpense : (savings > 0 ? 99 : 0);
@@ -143,7 +150,9 @@
     const goalPct = s.settings.savingsGoalPct || 0.1;
     const baseIncome = monthIncome > 0 ? monthIncome : refIncome;
     const monthlyTarget = baseIncome * goalPct; // cuánto deberías ahorrar este mes
-    const savedThisMonth = monthNet; // ingresos - gastos del mes = lo que te queda para ahorrar
+    // Lo que REALMENTE apartaste a ahorro este mes (aportes - retiros)
+    const savedThisMonth = sum(monthTx.filter((t) => t.type === "saving"), (t) => t.amount)
+      - sum(monthTx.filter((t) => t.type === "retiro"), (t) => t.amount);
     const savingsProgress = monthlyTarget > 0 ? savedThisMonth / monthlyTarget : 0;
     const savingsGap = Math.max(0, monthlyTarget - savedThisMonth); // lo que falta para la meta
 
@@ -151,15 +160,17 @@
     const monthlyHistory = [];
     for (let k = 5; k >= 0; k--) {
       const r0 = new Date(ref.getFullYear(), ref.getMonth() - k, 1);
-      const inc = sum(tx.filter((t) => t.type === "income" && inMonth(t.date, r0)), (t) => t.amount);
-      const exp = sum(tx.filter((t) => t.type === "expense" && inMonth(t.date, r0)), (t) => t.amount);
-      if (inc === 0 && exp === 0) continue;
-      const net = inc - exp;
+      const mtx = tx.filter((t) => inMonth(t.date, r0));
+      const inc = sum(mtx.filter((t) => t.type === "income"), (t) => t.amount);
+      const exp = sum(mtx.filter((t) => t.type === "expense"), (t) => t.amount);
+      const saved = sum(mtx.filter((t) => t.type === "saving"), (t) => t.amount)
+        - sum(mtx.filter((t) => t.type === "retiro"), (t) => t.amount);
+      if (inc === 0 && exp === 0 && saved === 0) continue;
       const target = inc * goalPct;
       monthlyHistory.push({
         label: F.MESES[r0.getMonth()].slice(0, 3),
-        income: inc, expense: exp, net, target,
-        met: inc > 0 && net >= target,
+        income: inc, expense: exp, saved, target,
+        met: target > 0 && saved >= target,
       });
     }
 
@@ -187,7 +198,8 @@
       nextPayday, daysToPayday, obligWindow,
       buffer, reserve, safeToSpend, canSpend,
       accountBalances,
-      savings, emergencyTarget, emergencyTargetFull, emergencyMonths,
+      savings, savingsBase, totalSaved, totalWithdrawn,
+      emergencyTarget, emergencyTargetFull, emergencyMonths,
       goalPct, monthlyTarget, savedThisMonth, savingsProgress, savingsGap, monthlyHistory,
       categories,
     };

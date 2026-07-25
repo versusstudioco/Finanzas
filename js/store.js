@@ -71,9 +71,10 @@
 
   // ---- Transacciones ----
   function addTransaction(t) {
+    const TYPES = ["income", "expense", "saving", "retiro"];
     const tx = {
       id: uid(),
-      type: t.type === "income" ? "income" : "expense",
+      type: TYPES.includes(t.type) ? t.type : "expense",
       amount: Math.abs(+t.amount || 0),
       category: t.category || "Otros",
       account: t.account || "Efectivo",
