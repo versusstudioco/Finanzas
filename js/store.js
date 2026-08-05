@@ -201,12 +201,26 @@
     save();
   }
 
+  // Borra TODO (todos los perfiles, datos, usuarios) de este dispositivo.
+  function wipeAll() {
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf("finanzas.") === 0) keys.push(k);
+      }
+      keys.forEach((k) => localStorage.removeItem(k));
+      sessionStorage.clear();
+    } catch (e) { console.error("wipeAll:", e); }
+    state = null;
+  }
+
   window.Store = {
     load, save, get, uid, setKey,
     addTransaction, updateTransaction, deleteTransaction,
     addDebt, updateDebt, deleteDebt, payDebt,
     addAccount, removeAccount,
     updateSettings, setOnboarded,
-    exportJSON, importJSON, reset,
+    exportJSON, importJSON, reset, wipeAll,
   };
 })();

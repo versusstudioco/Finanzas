@@ -1,6 +1,6 @@
 /* sw.js — service worker. Estrategia "network-first" para SIEMPRE mostrar
    la última versión cuando hay internet, y seguir funcionando offline. */
-const CACHE = "finanzas-v8";
+const CACHE = "finanzas-v9";
 const ASSETS = [
   "./",
   "./index.html",

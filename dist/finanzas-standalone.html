@@ -660,13 +660,27 @@ html, body {
     save();
   }
 
+  // Borra TODO (todos los perfiles, datos, usuarios) de este dispositivo.
+  function wipeAll() {
+    try {
+      const keys = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.indexOf("finanzas.") === 0) keys.push(k);
+      }
+      keys.forEach((k) => localStorage.removeItem(k));
+      sessionStorage.clear();
+    } catch (e) { console.error("wipeAll:", e); }
+    state = null;
+  }
+
   window.Store = {
     load, save, get, uid, setKey,
     addTransaction, updateTransaction, deleteTransaction,
     addDebt, updateDebt, deleteDebt, payDebt,
     addAccount, removeAccount,
     updateSettings, setOnboarded,
-    exportJSON, importJSON, reset,
+    exportJSON, importJSON, reset, wipeAll,
   };
 })();
 
@@ -1838,7 +1852,13 @@ html, body {
           <button class="btn secondary sm" data-import="1">⬆️ Importar</button>
         </div>
         <input type="file" id="import-file" accept="application/json" style="display:none">
-        <button class="btn danger block mt16" data-reset="1">🗑️ Borrar todo</button>
+        <button class="btn danger block mt16" data-reset="1">🗑️ Borrar mis datos (este usuario)</button>
+      </div>
+
+      <div class="section-title">Reiniciar la app</div>
+      <div class="card">
+        <p class="small muted" style="margin-top:0">Borra <b>TODO</b> de este dispositivo: todos los usuarios, sus movimientos, deudas y ahorros. La app vuelve a empezar desde cero. No se puede deshacer.</p>
+        <button class="btn danger block" data-hardreset="1">♻️ Reiniciar app (borrar todo y todos los usuarios)</button>
       </div>
 
       <div class="section-title">Instalar en tu teléfono</div>
@@ -1849,7 +1869,7 @@ html, body {
           Se abrirá como una app y funcionará sin internet.
         </p>
       </div>
-      <div class="center muted small" style="margin-top:20px">Finanzas · versión 8 · hecho para ti 💚</div>
+      <div class="center muted small" style="margin-top:20px">Finanzas · versión 9 · hecho para ti 💚</div>
     </div>`;
   }
 
@@ -2192,7 +2212,16 @@ html, body {
     if (t.closest("[data-export]")) return doExport();
     if (t.closest("[data-import]")) { document.getElementById("import-file").click(); return; }
     if (t.closest("[data-reset]")) {
-      if (confirm("Esto borrará TODOS tus datos de este dispositivo. ¿Continuar?")) { S.reset(); navTo("inicio"); }
+      if (confirm("Esto borrará los datos de ESTE usuario (movimientos, deudas, ahorro). ¿Continuar?")) { S.reset(); navTo("inicio"); }
+      return;
+    }
+    if (t.closest("[data-hardreset]")) {
+      if (confirm("⚠️ Esto borrará TODO: todos los usuarios y sus datos. La app volverá a empezar de cero. ¿Seguro?")) {
+        if (confirm("Última confirmación: se borrará todo y no se puede deshacer.")) {
+          S.wipeAll();
+          location.reload();
+        }
+      }
       return;
     }
   });
