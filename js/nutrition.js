@@ -17,7 +17,7 @@
   // Gasto extra estimado por tipo de sesión (kcal aproximadas)
   const GASTO_SESION = {
     easy: 350, intervals: 500, tempo: 450, long: 650,
-    gym: 300, futbol: 600, test5k: 400, carrera: 500, movilidad: 120,
+    gym: 300, futbol: 380, test5k: 400, carrera: 500, movilidad: 120,
   };
 
   // Mifflin-St Jeor (TMB / metabolismo basal)
@@ -116,8 +116,8 @@
   // Devuelve un objetivo de macros del día ("hoy") priorizando carbos en días duros.
   function macrosDelDia(p, tipoEntrenoHoy) {
     const base = macros(p);
-    const duros = ["intervals", "tempo", "long", "test5k", "carrera", "futbol"];
-    const suaves = ["easy", "gym", "movilidad"];
+    const duros = ["intervals", "tempo", "long", "test5k", "carrera"];
+    const suaves = ["easy", "gym", "movilidad", "futbol"]; // fútbol = trote suave ~5 km
     let carbs = base.carbs, kcal = base.kcal, nota = "Día estándar.";
     if (duros.indexOf(tipoEntrenoHoy) >= 0) {
       // Día duro: sube carbos (+25%) y calorías para rendir y recuperar

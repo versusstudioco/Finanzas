@@ -719,11 +719,15 @@
       chips.querySelectorAll(".chip").forEach((x) => x.classList.toggle("active", x === c));
     });
     document.getElementById("e-save").addEventListener("click", () => {
+      let km = +document.getElementById("e-km").value || 0;
+      // El fútbol cuenta como un trote de ~5 km si no anotas la distancia
+      if (sel === "futbol" && !km) km = 5;
       Store.addEntreno({
         tipo: sel, minutos: +document.getElementById("e-min").value || 0,
-        km: +document.getElementById("e-km").value || 0,
+        km,
         rpe: +document.getElementById("e-rpe").value || 0,
         nota: document.getElementById("e-nota").value.trim(),
+        titulo: sel === "futbol" ? "Fútbol (≈ trote 5 km)" : "",
       });
       closeSheet(); render();
     });

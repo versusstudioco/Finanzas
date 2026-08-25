@@ -199,12 +199,13 @@
       });
     }
 
-    // Un día carga las piernas si hay fútbol o gym de pierna/glúteo/full body.
-    const legLoad = (d) => d.futbol || grupoLeg(d.gym);
+    // El fútbol cuenta como trote suave de ~5 km, así que NO es un día "duro"
+    // ni bloquea la calidad: solo el gym de pierna/glúteo carga fuerte las piernas.
+    const legLoad = (d) => grupoLeg(d.gym);
     function diasDuros() {
       const s = [];
       dias.forEach((d) => {
-        if (d.futbol || legLoad(d) || (d.run && HARD.indexOf(d.run) >= 0) || d.run === "long") s.push(d.idx);
+        if (legLoad(d) || (d.run && HARD.indexOf(d.run) >= 0) || d.run === "long") s.push(d.idx);
       });
       return s;
     }
@@ -231,8 +232,8 @@
         let score = gap(d.idx);
         if (preferFinde && (d.idx === 5 || d.idx === 6)) score += 1.5;
         if (preferFinde && d.idx === 4) score += 0.5;
-        if (fut.has((d.idx + 6) % 7)) score -= 1.2; // día después del fútbol
-        if (fut.has((d.idx + 1) % 7)) score -= 0.6; // día antes del fútbol
+        // El fútbol es trote suave: no bloquea la calidad, solo una leve preferencia
+        if (fut.has((d.idx + 6) % 7)) score -= 0.3; // día después del partido
         if (d.gym) score -= 0.3; // preferir día libre sobre doble sesión
         if (score > bestScore) { bestScore = score; best = d; }
       });
@@ -255,7 +256,7 @@
       // Tipo "principal" para la insignia y la nutrición (lo más duro del día)
       let principal;
       if (d.descanso) principal = "descanso";
-      else if (d.futbol) { principal = "futbol"; extra = "Cuenta como velocidad + agilidad. Hidrátate y come carbos antes."; }
+      else if (d.futbol) { principal = "futbol"; extra = "Cuenta como tu trote suave de ~5 km (más los sprints del partido). Hidrátate bien y come algo de carbos antes."; }
       else if (d.run && (HARD.indexOf(d.run) >= 0 || d.run === "long")) principal = d.run;
       else if (d.gym) principal = "gym";
       else if (d.run) principal = d.run;
@@ -281,10 +282,11 @@
     });
   }
 
-  // Etiqueta corta de la carga del día (para nutrición)
+  // Etiqueta corta de la carga del día (para nutrición).
+  // El fútbol cuenta como trote suave de ~5 km (carga media, no alta).
   function cargaDelDia(tipo) {
-    if (["intervals", "tempo", "long", "test5k", "carrera", "futbol"].indexOf(tipo) >= 0) return "alta";
-    if (["easy", "gym", "movilidad"].indexOf(tipo) >= 0) return "media";
+    if (["intervals", "tempo", "long", "test5k", "carrera"].indexOf(tipo) >= 0) return "alta";
+    if (["easy", "gym", "movilidad", "futbol"].indexOf(tipo) >= 0) return "media";
     return "baja";
   }
 

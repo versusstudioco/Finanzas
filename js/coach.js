@@ -42,7 +42,7 @@
       easy: "Rodaje regenerativo. Suave de verdad: hoy se recupera. 🌿",
       test5k: "¡Día de test! Mide tu avance y aprieta al final. ⏱️",
       gym: "Fuerza hoy. Más fuerte = más rápida y sin lesiones. 🏋️‍♀️",
-      futbol: "Partido: disfrútalo y aprovecha los sprints. Hidrátate bien. ⚽",
+      futbol: "Partido: cuenta como tu trote de ~5 km. Disfruta los sprints e hidrátate bien. ⚽",
       descanso: "Descanso. El progreso se cocina hoy. Duerme bien y come tu proteína. 😴",
     };
     return map[t] || "A por el día. Consistencia > perfección.";

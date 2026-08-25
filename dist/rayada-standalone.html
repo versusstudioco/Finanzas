@@ -999,7 +999,7 @@ html, body {
   // Gasto extra estimado por tipo de sesión (kcal aproximadas)
   const GASTO_SESION = {
     easy: 350, intervals: 500, tempo: 450, long: 650,
-    gym: 300, futbol: 600, test5k: 400, carrera: 500, movilidad: 120,
+    gym: 300, futbol: 380, test5k: 400, carrera: 500, movilidad: 120,
   };
 
   // Mifflin-St Jeor (TMB / metabolismo basal)
@@ -1098,8 +1098,8 @@ html, body {
   // Devuelve un objetivo de macros del día ("hoy") priorizando carbos en días duros.
   function macrosDelDia(p, tipoEntrenoHoy) {
     const base = macros(p);
-    const duros = ["intervals", "tempo", "long", "test5k", "carrera", "futbol"];
-    const suaves = ["easy", "gym", "movilidad"];
+    const duros = ["intervals", "tempo", "long", "test5k", "carrera"];
+    const suaves = ["easy", "gym", "movilidad", "futbol"]; // fútbol = trote suave ~5 km
     let carbs = base.carbs, kcal = base.kcal, nota = "Día estándar.";
     if (duros.indexOf(tipoEntrenoHoy) >= 0) {
       // Día duro: sube carbos (+25%) y calorías para rendir y recuperar
@@ -1504,12 +1504,13 @@ html, body {
       });
     }
 
-    // Un día carga las piernas si hay fútbol o gym de pierna/glúteo/full body.
-    const legLoad = (d) => d.futbol || grupoLeg(d.gym);
+    // El fútbol cuenta como trote suave de ~5 km, así que NO es un día "duro"
+    // ni bloquea la calidad: solo el gym de pierna/glúteo carga fuerte las piernas.
+    const legLoad = (d) => grupoLeg(d.gym);
     function diasDuros() {
       const s = [];
       dias.forEach((d) => {
-        if (d.futbol || legLoad(d) || (d.run && HARD.indexOf(d.run) >= 0) || d.run === "long") s.push(d.idx);
+        if (legLoad(d) || (d.run && HARD.indexOf(d.run) >= 0) || d.run === "long") s.push(d.idx);
       });
       return s;
     }
@@ -1536,8 +1537,8 @@ html, body {
         let score = gap(d.idx);
         if (preferFinde && (d.idx === 5 || d.idx === 6)) score += 1.5;
         if (preferFinde && d.idx === 4) score += 0.5;
-        if (fut.has((d.idx + 6) % 7)) score -= 1.2; // día después del fútbol
-        if (fut.has((d.idx + 1) % 7)) score -= 0.6; // día antes del fútbol
+        // El fútbol es trote suave: no bloquea la calidad, solo una leve preferencia
+        if (fut.has((d.idx + 6) % 7)) score -= 0.3; // día después del partido
         if (d.gym) score -= 0.3; // preferir día libre sobre doble sesión
         if (score > bestScore) { bestScore = score; best = d; }
       });
@@ -1560,7 +1561,7 @@ html, body {
       // Tipo "principal" para la insignia y la nutrición (lo más duro del día)
       let principal;
       if (d.descanso) principal = "descanso";
-      else if (d.futbol) { principal = "futbol"; extra = "Cuenta como velocidad + agilidad. Hidrátate y come carbos antes."; }
+      else if (d.futbol) { principal = "futbol"; extra = "Cuenta como tu trote suave de ~5 km (más los sprints del partido). Hidrátate bien y come algo de carbos antes."; }
       else if (d.run && (HARD.indexOf(d.run) >= 0 || d.run === "long")) principal = d.run;
       else if (d.gym) principal = "gym";
       else if (d.run) principal = d.run;
@@ -1586,10 +1587,11 @@ html, body {
     });
   }
 
-  // Etiqueta corta de la carga del día (para nutrición)
+  // Etiqueta corta de la carga del día (para nutrición).
+  // El fútbol cuenta como trote suave de ~5 km (carga media, no alta).
   function cargaDelDia(tipo) {
-    if (["intervals", "tempo", "long", "test5k", "carrera", "futbol"].indexOf(tipo) >= 0) return "alta";
-    if (["easy", "gym", "movilidad"].indexOf(tipo) >= 0) return "media";
+    if (["intervals", "tempo", "long", "test5k", "carrera"].indexOf(tipo) >= 0) return "alta";
+    if (["easy", "gym", "movilidad", "futbol"].indexOf(tipo) >= 0) return "media";
     return "baja";
   }
 
@@ -1696,7 +1698,7 @@ html, body {
       easy: "Rodaje regenerativo. Suave de verdad: hoy se recupera. 🌿",
       test5k: "¡Día de test! Mide tu avance y aprieta al final. ⏱️",
       gym: "Fuerza hoy. Más fuerte = más rápida y sin lesiones. 🏋️‍♀️",
-      futbol: "Partido: disfrútalo y aprovecha los sprints. Hidrátate bien. ⚽",
+      futbol: "Partido: cuenta como tu trote de ~5 km. Disfruta los sprints e hidrátate bien. ⚽",
       descanso: "Descanso. El progreso se cocina hoy. Duerme bien y come tu proteína. 😴",
     };
     return map[t] || "A por el día. Consistencia > perfección.";
@@ -2516,11 +2518,15 @@ html, body {
       chips.querySelectorAll(".chip").forEach((x) => x.classList.toggle("active", x === c));
     });
     document.getElementById("e-save").addEventListener("click", () => {
+      let km = +document.getElementById("e-km").value || 0;
+      // El fútbol cuenta como un trote de ~5 km si no anotas la distancia
+      if (sel === "futbol" && !km) km = 5;
       Store.addEntreno({
         tipo: sel, minutos: +document.getElementById("e-min").value || 0,
-        km: +document.getElementById("e-km").value || 0,
+        km,
         rpe: +document.getElementById("e-rpe").value || 0,
         nota: document.getElementById("e-nota").value.trim(),
+        titulo: sel === "futbol" ? "Fútbol (≈ trote 5 km)" : "",
       });
       closeSheet(); render();
     });
