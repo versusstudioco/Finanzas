@@ -1,35 +1,13 @@
-/* format.js — utilidades de formato (moneda COP, fechas, números) */
+/* format.js — utilidades de formato (fechas, números, tiempo y ritmo de running) */
 (function () {
   "use strict";
 
-  const COP = new Intl.NumberFormat("es-CO", {
-    style: "currency",
-    currency: "COP",
-    maximumFractionDigits: 0,
-  });
-
-  const COP_SIGNED = new Intl.NumberFormat("es-CO", {
-    style: "currency",
-    currency: "COP",
-    maximumFractionDigits: 0,
-    signDisplay: "always",
-  });
-
   const NUM = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 });
+  const NUM1 = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 1 });
 
-  function money(n) {
-    if (n == null || isNaN(n)) return COP.format(0);
-    return COP.format(Math.round(n));
-  }
-
-  function moneySigned(n) {
-    if (n == null || isNaN(n)) return COP_SIGNED.format(0);
-    return COP_SIGNED.format(Math.round(n));
-  }
-
-  function num(n) {
+  function num(n, d) {
     if (n == null || isNaN(n)) return "0";
-    return NUM.format(n);
+    return (d === 1 ? NUM1 : NUM).format(n);
   }
 
   function pct(n, digits) {
@@ -41,19 +19,46 @@
     );
   }
 
-  // Convierte texto de un input (ej "1.500.000" o "1500000") a número.
-  function parseMoney(str) {
+  // ---------- Tiempo (running) ----------
+  // Segundos -> "mm:ss" o "h:mm:ss"
+  function tiempo(seg) {
+    seg = Math.max(0, Math.round(+seg || 0));
+    const h = Math.floor(seg / 3600);
+    const m = Math.floor((seg % 3600) / 60);
+    const s = seg % 60;
+    const mm = String(m).padStart(2, "0");
+    const ss = String(s).padStart(2, "0");
+    if (h > 0) return `${h}:${mm}:${ss}`;
+    return `${m}:${ss}`;
+  }
+
+  // Ritmo: segundos por km -> "m:ss /km"
+  function ritmo(segPorKm) {
+    if (!segPorKm || isNaN(segPorKm) || !isFinite(segPorKm)) return "—";
+    const s = Math.round(segPorKm);
+    const m = Math.floor(s / 60);
+    const ss = String(s % 60).padStart(2, "0");
+    return `${m}:${ss}/km`;
+  }
+
+  // Parsea "20:00", "4:00", "1:05:30", "90" (seg) -> segundos
+  function parseTiempo(str) {
     if (typeof str === "number") return str;
     if (!str) return 0;
-    const cleaned = String(str)
-      .replace(/[^0-9,.-]/g, "")
-      .replace(/\./g, "")
-      .replace(/,/g, ".");
-    const v = parseFloat(cleaned);
-    return isNaN(v) ? 0 : v;
+    const parts = String(str).trim().split(":").map((x) => parseInt(x, 10) || 0);
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return parts[0] || 0;
+  }
+
+  // km/h a partir de segundos por km
+  function velocidad(segPorKm) {
+    if (!segPorKm) return 0;
+    return 3600 / segPorKm;
   }
 
   const DIAS = ["dom", "lun", "mar", "mié", "jue", "vie", "sáb"];
+  const DIAS_LARGO = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
   const MESES = [
     "enero", "febrero", "marzo", "abril", "mayo", "junio",
     "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
@@ -61,7 +66,6 @@
 
   function toDate(d) {
     if (d instanceof Date) return d;
-    // formato YYYY-MM-DD (local, sin desfase de zona horaria)
     const parts = String(d).split("-");
     if (parts.length === 3) {
       return new Date(+parts[0], +parts[1] - 1, +parts[2]);
@@ -96,7 +100,6 @@
     return Math.round(ms / 86400000);
   }
 
-  // "en 3 días", "hoy", "mañana", "hace 2 días"
   function relativo(dias) {
     if (dias === 0) return "hoy";
     if (dias === 1) return "mañana";
@@ -105,9 +108,16 @@
     return `hace ${Math.abs(dias)} días`;
   }
 
+  // Índice de día de semana empezando en lunes (0 = lunes ... 6 = domingo)
+  function diaSemanaLun(d) {
+    const g = toDate(d).getDay(); // 0=dom
+    return (g + 6) % 7;
+  }
+
   window.Fmt = {
-    money, moneySigned, num, pct, parseMoney,
-    toDate, ymd, fecha, fechaLarga, hoy, diasEntre, relativo,
-    MESES, DIAS,
+    num, pct,
+    tiempo, ritmo, parseTiempo, velocidad,
+    toDate, ymd, fecha, fechaLarga, hoy, diasEntre, relativo, diaSemanaLun,
+    MESES, DIAS, DIAS_LARGO,
   };
 })();

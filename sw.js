@@ -1,14 +1,16 @@
 /* sw.js — service worker. Estrategia "network-first" para SIEMPRE mostrar
    la última versión cuando hay internet, y seguir funcionando offline. */
-const CACHE = "finanzas-v9";
+const CACHE = "rayada-v2";
 const ASSETS = [
   "./",
   "./index.html",
   "./css/styles.css",
   "./js/format.js",
   "./js/store.js",
-  "./js/advisor.js",
-  "./js/auth.js",
+  "./js/photos.js",
+  "./js/nutrition.js",
+  "./js/training.js",
+  "./js/coach.js",
   "./js/app.js",
   "./manifest.webmanifest",
   "./icons/icon.svg",

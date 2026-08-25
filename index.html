@@ -3,44 +3,50 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
-  <title>Finanzas</title>
-  <meta name="description" content="Controla tus ingresos, gastos y deudas. Tu agente financiero personal que te dice qué pagar, cuándo y si puedes gastar.">
-  <meta name="theme-color" content="#0b0f14">
+  <title>Rayada</title>
+  <meta name="description" content="Tu coach de nutrición y running. Define tu cuerpo, baja grasa y corre 5k en 20 minutos. Con planes de experto en nutrición y running que integran gym y fútbol.">
+  <meta name="theme-color" content="#0a0e0c">
   <link rel="manifest" href="./manifest.webmanifest">
   <link rel="icon" href="./icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Finanzas">
+  <meta name="apple-mobile-web-app-title" content="Rayada">
   <meta name="mobile-web-app-capable" content="yes">
-  <link rel="stylesheet" href="./css/styles.css?v=9">
+  <link rel="stylesheet" href="./css/styles.css?v=2">
 </head>
 <body>
   <div id="app">
     <div class="header">
-      <h1>Finanzas</h1>
-      <div class="sub">Tu dinero, bajo control</div>
+      <div>
+        <h1>Rayada<span class="logo-dot">.</span></h1>
+        <div class="sub" id="header-sub">Tu coach de nutrición y running</div>
+      </div>
+      <button class="btn ghost sm" id="btn-ajustes" style="flex:0 0 auto;padding:8px 12px;" aria-label="Ajustes">⚙️</button>
     </div>
 
-    <!-- las pantallas se inyectan aquí -->
+    <main id="main"><!-- las pantallas se inyectan aquí --></main>
 
     <nav class="nav">
       <button data-nav="inicio" class="active"><span class="ni">🏠</span>Inicio</button>
-      <button data-nav="movimientos"><span class="ni">🧾</span>Movimientos</button>
-      <button data-nav="deudas"><span class="ni">🏦</span>Deudas</button>
-      <button data-nav="agente"><span class="ni">🤖</span>Agente</button>
-      <button data-nav="ajustes"><span class="ni">⚙️</span>Ajustes</button>
+      <button data-nav="nutricion"><span class="ni">🥗</span>Nutrición</button>
+      <button data-nav="entreno"><span class="ni">🏃‍♀️</span>Entreno</button>
+      <button data-nav="progreso"><span class="ni">📈</span>Progreso</button>
+      <button data-nav="coach"><span class="ni">🤖</span>Coach</button>
     </nav>
   </div>
 
   <button class="fab" id="fab" aria-label="Agregar">＋</button>
 
   <div class="sheet-overlay" id="sheet-overlay"></div>
+  <div id="onb-root" style="display:none;"></div>
 
-  <script src="./js/format.js?v=9"></script>
-  <script src="./js/store.js?v=9"></script>
-  <script src="./js/advisor.js?v=9"></script>
-  <script src="./js/auth.js?v=9"></script>
-  <script src="./js/app.js?v=9"></script>
+  <script src="./js/format.js?v=2"></script>
+  <script src="./js/store.js?v=2"></script>
+  <script src="./js/photos.js?v=2"></script>
+  <script src="./js/nutrition.js?v=2"></script>
+  <script src="./js/training.js?v=2"></script>
+  <script src="./js/coach.js?v=2"></script>
+  <script src="./js/app.js?v=2"></script>
 </body>
 </html>
