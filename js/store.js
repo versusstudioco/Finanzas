@@ -2,34 +2,40 @@
 (function () {
   "use strict";
 
-  let KEY = "finanzas.v1"; // se cambia por perfil (finanzas.data.<id>)
-
-  // Cambia el almacén activo (por perfil) y recarga sus datos
-  function setKey(k) { KEY = k; state = null; load(); }
+  const KEY = "rayada.v1";
 
   const DEFAULT = {
     version: 1,
-    settings: {
-      currency: "COP",
-      payday: 0, // (heredado) día de pago único
-      paydays: [], // días de pago de nómina (ej. [15, 30] para quincenal)
-      savings: 0, // ahorro actual / fondo de emergencia
-      bufferPct: 0.1, // colchón de seguridad sobre gasto mensual
-      savingsGoalPct: 0.1, // meta de ahorro
+    profile: {
+      nombre: "",
+      sexo: "F",            // F | M
+      edad: 28,
+      alturaCm: 165,
+      pesoKg: 62,           // peso actual (se sincroniza con última medición)
+      objetivo: "definicion", // definicion | perder | mantener
+      nivelActividad: "alto", // sedentario | ligero | moderado | alto | atleta
+      // Compromisos fijos de la semana (0=lun ... 6=dom)
+      diasGym: [0, 4],       // lun, vie
+      diasFutbol: [2],       // mié
+      diasDescanso: [6],     // dom
+      // Reto de running
+      objetivoTiempoSeg: 1200, // 20:00 en 5k
+      objetivoDistanciaKm: 5,
+      mejor5kSeg: 0,          // se calcula del último test; 0 = sin dato
+      fechaReto: "",          // opcional
+      aguaMetaVasos: 8,
       onboarded: false,
     },
-    // categorías por defecto
-    categories: {
-      income: ["Salario", "Freelance", "Ventas", "Otros ingresos"],
-      expense: [
-        "Arriendo", "Servicios", "Mercado", "Transporte", "Comida fuera",
-        "Salud", "Educación", "Entretenimiento", "Suscripciones", "Otros",
-      ],
-    },
-    // medios de pago / cuentas (dónde está el dinero)
-    accounts: ["Efectivo", "Cuenta bancaria"],
-    transactions: [], // {id, type, amount, category, account, date, note, recurring}
-    debts: [], // {id, name, creditor, total, remaining, apr, minPayment, dueDay}
+    // Registro de comidas: {id, date, comida, label, kcal, prot, carbs, grasa}
+    comidas: [],
+    // Entrenamientos hechos: {id, date, tipo, titulo, minutos, km, timeSeg, rpe, nota}
+    entrenos: [],
+    // Mediciones: {id, date, pesoKg, cintura, cadera, grasaPct, nota}
+    mediciones: [],
+    // Alimentos personalizados: {id, nombre, unidad, kcal, prot, carbs, grasa}
+    alimentos: [],
+    // Agua por día: { 'YYYY-MM-DD': vasos }
+    agua: {},
   };
 
   let state = null;
@@ -38,9 +44,9 @@
     try {
       const raw = localStorage.getItem(KEY);
       if (raw) {
-        state = Object.assign({}, DEFAULT, JSON.parse(raw));
-        state.settings = Object.assign({}, DEFAULT.settings, state.settings);
-        state.categories = Object.assign({}, DEFAULT.categories, state.categories);
+        const parsed = JSON.parse(raw);
+        state = Object.assign({}, DEFAULT, parsed);
+        state.profile = Object.assign({}, DEFAULT.profile, parsed.profile);
       } else {
         state = JSON.parse(JSON.stringify(DEFAULT));
       }
@@ -69,125 +75,155 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
   }
 
-  // ---- Transacciones ----
-  function addTransaction(t) {
-    const TYPES = ["income", "expense", "saving", "retiro"];
-    const tx = {
-      id: uid(),
-      type: TYPES.includes(t.type) ? t.type : "expense",
-      amount: Math.abs(+t.amount || 0),
-      category: t.category || "Otros",
-      account: t.account || "Efectivo",
-      date: t.date || window.Fmt.ymd(window.Fmt.hoy()),
-      note: t.note || "",
-      recurring: !!t.recurring,
-    };
-    get().transactions.push(tx);
-    save();
-    return tx;
-  }
-
-  function updateTransaction(id, patch) {
-    const t = get().transactions.find((x) => x.id === id);
-    if (t) {
-      Object.assign(t, patch);
-      if (patch.amount != null) t.amount = Math.abs(+patch.amount || 0);
-      save();
-    }
-    return t;
-  }
-
-  function deleteTransaction(id) {
-    state.transactions = get().transactions.filter((x) => x.id !== id);
+  // ---------- Perfil ----------
+  function updateProfile(patch) {
+    Object.assign(get().profile, patch);
     save();
   }
-
-  // ---- Deudas ----
-  function addDebt(d) {
-    const debt = {
-      id: uid(),
-      name: d.name || "Deuda",
-      creditor: d.creditor || "",
-      total: Math.abs(+d.total || 0),
-      remaining: d.remaining != null ? Math.abs(+d.remaining) : Math.abs(+d.total || 0),
-      apr: Math.max(0, +d.apr || 0), // tasa efectiva anual en %
-      minPayment: Math.abs(+d.minPayment || 0),
-      dueDay: Math.min(31, Math.max(1, +d.dueDay || 1)),
-    };
-    get().debts.push(debt);
-    save();
-    return debt;
-  }
-
-  function updateDebt(id, patch) {
-    const d = get().debts.find((x) => x.id === id);
-    if (d) {
-      Object.assign(d, patch);
-      ["total", "remaining", "apr", "minPayment"].forEach((k) => {
-        if (patch[k] != null) d[k] = Math.abs(+patch[k] || 0);
-      });
-      if (patch.dueDay != null) d.dueDay = Math.min(31, Math.max(1, +patch.dueDay));
-      save();
-    }
-    return d;
-  }
-
-  function deleteDebt(id) {
-    state.debts = get().debts.filter((x) => x.id !== id);
-    save();
-  }
-
-  // Registrar un abono a una deuda: descuenta del saldo y crea un gasto.
-  function payDebt(id, amount, account) {
-    const d = get().debts.find((x) => x.id === id);
-    if (!d) return;
-    const amt = Math.abs(+amount || 0);
-    d.remaining = Math.max(0, d.remaining - amt);
-    addTransaction({
-      type: "expense",
-      amount: amt,
-      category: "Pago deuda",
-      account: account || "Cuenta bancaria",
-      note: `Abono: ${d.name}`,
-    });
-    // addTransaction ya llama save()
-  }
-
-  // ---- Cuentas / medios de pago ----
-  function addAccount(name) {
-    name = (name || "").trim();
-    const accs = get().accounts || (state.accounts = []);
-    if (name && !accs.some((a) => a.toLowerCase() === name.toLowerCase())) {
-      accs.push(name); save();
-    }
-    return accs;
-  }
-  function removeAccount(name) {
-    state.accounts = (get().accounts || []).filter((a) => a !== name);
-    save();
-  }
-
-  // ---- Settings ----
-  function updateSettings(patch) {
-    Object.assign(get().settings, patch);
-    save();
-  }
-
   function setOnboarded(v) {
-    get().settings.onboarded = !!v;
+    get().profile.onboarded = !!v;
     save();
   }
 
-  // ---- Import / Export ----
+  // ---------- Comidas ----------
+  function addComida(c) {
+    const item = {
+      id: uid(),
+      date: c.date || window.Fmt.ymd(window.Fmt.hoy()),
+      comida: c.comida || "snack", // desayuno | almuerzo | cena | snack
+      label: c.label || "Comida",
+      kcal: Math.max(0, Math.round(+c.kcal || 0)),
+      prot: Math.max(0, +c.prot || 0),
+      carbs: Math.max(0, +c.carbs || 0),
+      grasa: Math.max(0, +c.grasa || 0),
+    };
+    get().comidas.push(item);
+    save();
+    return item;
+  }
+  function deleteComida(id) {
+    state.comidas = get().comidas.filter((x) => x.id !== id);
+    save();
+  }
+  function comidasDe(dateStr) {
+    return get().comidas.filter((c) => c.date === dateStr);
+  }
+
+  // ---------- Entrenamientos ----------
+  function addEntreno(e) {
+    const item = {
+      id: uid(),
+      date: e.date || window.Fmt.ymd(window.Fmt.hoy()),
+      tipo: e.tipo || "easy", // easy|intervals|tempo|long|gym|futbol|test5k|carrera|movilidad
+      titulo: e.titulo || "",
+      minutos: Math.max(0, Math.round(+e.minutos || 0)),
+      km: Math.max(0, +e.km || 0),
+      timeSeg: Math.max(0, Math.round(+e.timeSeg || 0)),
+      rpe: Math.min(10, Math.max(0, +e.rpe || 0)),
+      nota: e.nota || "",
+    };
+    get().entrenos.push(item);
+    // Si es un test de 5k, actualiza el mejor tiempo del perfil
+    if (item.tipo === "test5k" && item.timeSeg > 0) {
+      const p = get().profile;
+      if (!p.mejor5kSeg || item.timeSeg < p.mejor5kSeg) p.mejor5kSeg = item.timeSeg;
+    }
+    save();
+    return item;
+  }
+  function deleteEntreno(id) {
+    state.entrenos = get().entrenos.filter((x) => x.id !== id);
+    // Recalcula mejor 5k
+    recomputeMejor5k();
+    save();
+  }
+  function entrenosDe(dateStr) {
+    return get().entrenos.filter((e) => e.date === dateStr);
+  }
+  function recomputeMejor5k() {
+    const tests = get().entrenos.filter((e) => e.tipo === "test5k" && e.timeSeg > 0);
+    get().profile.mejor5kSeg = tests.length ? Math.min.apply(null, tests.map((t) => t.timeSeg)) : 0;
+  }
+  function tests5k() {
+    return get().entrenos
+      .filter((e) => e.tipo === "test5k" && e.timeSeg > 0)
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // ---------- Mediciones ----------
+  function addMedicion(m) {
+    const item = {
+      id: uid(),
+      date: m.date || window.Fmt.ymd(window.Fmt.hoy()),
+      pesoKg: +m.pesoKg || 0,
+      cintura: +m.cintura || 0,
+      cadera: +m.cadera || 0,
+      grasaPct: +m.grasaPct || 0,
+      nota: m.nota || "",
+    };
+    get().mediciones.push(item);
+    // sincroniza peso actual con la medición más reciente
+    if (item.pesoKg > 0) {
+      const recientes = get().mediciones.filter((x) => x.pesoKg > 0)
+        .sort((a, b) => b.date.localeCompare(a.date));
+      if (recientes.length && recientes[0].id === item.id) {
+        get().profile.pesoKg = item.pesoKg;
+      } else if (recientes.length) {
+        get().profile.pesoKg = recientes[0].pesoKg;
+      }
+    }
+    save();
+    return item;
+  }
+  function deleteMedicion(id) {
+    state.mediciones = get().mediciones.filter((x) => x.id !== id);
+    const recientes = get().mediciones.filter((x) => x.pesoKg > 0)
+      .sort((a, b) => b.date.localeCompare(a.date));
+    if (recientes.length) get().profile.pesoKg = recientes[0].pesoKg;
+    save();
+  }
+  function medicionesOrdenadas() {
+    return get().mediciones.slice().sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // ---------- Alimentos personalizados ----------
+  function addAlimento(a) {
+    const item = {
+      id: uid(),
+      nombre: a.nombre || "Alimento",
+      unidad: a.unidad || "porción",
+      kcal: Math.max(0, Math.round(+a.kcal || 0)),
+      prot: Math.max(0, +a.prot || 0),
+      carbs: Math.max(0, +a.carbs || 0),
+      grasa: Math.max(0, +a.grasa || 0),
+    };
+    get().alimentos.push(item);
+    save();
+    return item;
+  }
+  function deleteAlimento(id) {
+    state.alimentos = get().alimentos.filter((x) => x.id !== id);
+    save();
+  }
+
+  // ---------- Agua ----------
+  function setAgua(dateStr, vasos) {
+    get().agua[dateStr] = Math.max(0, Math.round(vasos));
+    save();
+  }
+  function getAgua(dateStr) {
+    return get().agua[dateStr] || 0;
+  }
+
+  // ---------- Import / Export ----------
   function exportJSON() {
     return JSON.stringify(get(), null, 2);
   }
-
   function importJSON(json) {
     try {
       const data = typeof json === "string" ? JSON.parse(json) : json;
       state = Object.assign({}, DEFAULT, data);
-      state.settings = Object.assign({}, DEFAULT.settings, data.settings || {});
+      state.profile = Object.assign({}, DEFAULT.profile, data.profile || {});
       save();
       return true;
     } catch (e) {
@@ -195,32 +231,19 @@
       return false;
     }
   }
-
   function reset() {
     state = JSON.parse(JSON.stringify(DEFAULT));
     save();
   }
 
-  // Borra TODO (todos los perfiles, datos, usuarios) de este dispositivo.
-  function wipeAll() {
-    try {
-      const keys = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i);
-        if (k && k.indexOf("finanzas.") === 0) keys.push(k);
-      }
-      keys.forEach((k) => localStorage.removeItem(k));
-      sessionStorage.clear();
-    } catch (e) { console.error("wipeAll:", e); }
-    state = null;
-  }
-
   window.Store = {
-    load, save, get, uid, setKey,
-    addTransaction, updateTransaction, deleteTransaction,
-    addDebt, updateDebt, deleteDebt, payDebt,
-    addAccount, removeAccount,
-    updateSettings, setOnboarded,
-    exportJSON, importJSON, reset, wipeAll,
+    load, save, get, uid,
+    updateProfile, setOnboarded,
+    addComida, deleteComida, comidasDe,
+    addEntreno, deleteEntreno, entrenosDe, tests5k,
+    addMedicion, deleteMedicion, medicionesOrdenadas,
+    addAlimento, deleteAlimento,
+    setAgua, getAgua,
+    exportJSON, importJSON, reset,
   };
 })();

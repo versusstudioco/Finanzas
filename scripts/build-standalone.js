@@ -1,6 +1,7 @@
 /* build-standalone.js — junta CSS + JS + markup en un solo archivo HTML.
    Genera:
-     dist/finanzas-standalone.html   (documento completo, para descargar/abrir)
+     dist/rayada-standalone.html   (documento completo, para descargar/abrir)
+     scripts/.artifact-fragment.html (fragmento para publicar como Artifact)
    Uso: node scripts/build-standalone.js */
 const fs = require("fs");
 const path = require("path");
@@ -10,34 +11,37 @@ const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 
 const css = read("css/styles.css");
 
-// Inyecta el logo como data URI para que se vea sin archivos externos
-const iconDataUri = "data:image/svg+xml;base64," + Buffer.from(read("icons/icon.svg")).toString("base64");
-
 const js = [
   read("js/format.js"),
   read("js/store.js"),
-  read("js/advisor.js"),
-  read("js/auth.js").split("./icons/icon.svg").join(iconDataUri),
+  read("js/nutrition.js"),
+  read("js/training.js"),
+  read("js/coach.js"),
   // en standalone no hay sw.js: quitamos el registro del service worker
-  read("js/app.js").replace(/\/\/ registrar service worker[\s\S]*?\n {2}}\n/, "\n"),
+  read("js/app.js").replace(/\n\s*\/\/ Service worker[\s\S]*?\n {2}}\n/, "\n"),
 ].join("\n");
 
 const bodyMarkup = `
   <div id="app">
     <div class="header">
-      <h1>Finanzas</h1>
-      <div class="sub">Tu dinero, bajo control</div>
+      <div>
+        <h1>Rayada<span class="logo-dot">.</span></h1>
+        <div class="sub" id="header-sub">Tu coach de nutrición y running</div>
+      </div>
+      <button class="btn ghost sm" id="btn-ajustes" style="flex:0 0 auto;padding:8px 12px;" aria-label="Ajustes">⚙️</button>
     </div>
+    <main id="main"></main>
     <nav class="nav">
       <button data-nav="inicio" class="active"><span class="ni">🏠</span>Inicio</button>
-      <button data-nav="movimientos"><span class="ni">🧾</span>Movimientos</button>
-      <button data-nav="deudas"><span class="ni">🏦</span>Deudas</button>
-      <button data-nav="agente"><span class="ni">🤖</span>Agente</button>
-      <button data-nav="ajustes"><span class="ni">⚙️</span>Ajustes</button>
+      <button data-nav="nutricion"><span class="ni">🥗</span>Nutrición</button>
+      <button data-nav="entreno"><span class="ni">🏃‍♀️</span>Entreno</button>
+      <button data-nav="progreso"><span class="ni">📈</span>Progreso</button>
+      <button data-nav="coach"><span class="ni">🤖</span>Coach</button>
     </nav>
   </div>
   <button class="fab" id="fab" aria-label="Agregar">＋</button>
-  <div class="sheet-overlay" id="sheet-overlay"></div>`;
+  <div class="sheet-overlay" id="sheet-overlay"></div>
+  <div id="onb-root" style="display:none;"></div>`;
 
 // --- Documento completo (para dist/) ---
 const fullDoc = `<!DOCTYPE html>
@@ -45,10 +49,10 @@ const fullDoc = `<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
-<title>Finanzas</title>
-<meta name="theme-color" content="#0b0f14">
+<title>Rayada</title>
+<meta name="theme-color" content="#0a0e0c">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Finanzas">
+<meta name="apple-mobile-web-app-title" content="Rayada">
 <style>
 ${css}
 </style>
@@ -63,8 +67,8 @@ ${js}
 
 const distDir = path.join(root, "dist");
 fs.mkdirSync(distDir, { recursive: true });
-fs.writeFileSync(path.join(distDir, "finanzas-standalone.html"), fullDoc);
-console.log("✓ dist/finanzas-standalone.html", (fullDoc.length / 1024).toFixed(1) + " KB");
+fs.writeFileSync(path.join(distDir, "rayada-standalone.html"), fullDoc);
+console.log("✓ dist/rayada-standalone.html", (fullDoc.length / 1024).toFixed(1) + " KB");
 
 // --- Fragmento para Artifact (style + markup + script, sin html/head/body) ---
 const fragment = `<style>

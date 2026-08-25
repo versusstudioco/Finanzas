@@ -1,892 +1,1003 @@
-/* app.js — UI, navegación y render. Une Store + Advisor + Fmt. */
+/* app.js — interfaz, navegación y formularios de Rayada. */
 (function () {
   "use strict";
-  const F = window.Fmt;
-  const S = window.Store;
 
-  S.load();
-
-  const app = document.getElementById("app");
-  let current = "inicio";
-
-  // ---------- Utilidades de render ----------
-  const el = (html) => {
-    const t = document.createElement("template");
-    t.innerHTML = html.trim();
-    return t.content.firstElementChild;
-  };
-  const esc = (s) =>
-    String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
-      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
-    );
-
-  const catIcon = (cat) => {
-    const m = {
-      "Salario": "💼", "Freelance": "💻", "Ventas": "🛍️", "Otros ingresos": "➕",
-      "Arriendo": "🏠", "Servicios": "💡", "Mercado": "🛒", "Transporte": "🚌",
-      "Comida fuera": "🍔", "Salud": "🏥", "Educación": "📚", "Entretenimiento": "🎬",
-      "Suscripciones": "📺", "Pago deuda": "🏦", "Ahorro": "🐷", "Otros": "📦",
-    };
-    return m[cat] || (/* fallback */ "📦");
-  };
-
-  const accIcon = (acc) => {
-    const a = (acc || "").toLowerCase();
-    if (a.includes("efectivo")) return "💵";
-    if (a.includes("banc") || a.includes("cuenta")) return "🏦";
-    if (a.includes("tarjeta") || a.includes("crédito") || a.includes("credito")) return "💳";
-    if (a.includes("ahorro")) return "🐷";
-    if (a.includes("nequi") || a.includes("daviplata") || a.includes("billetera")) return "📱";
-    return "💰";
-  };
-
-  // ---------- Navegación ----------
-  const screens = ["inicio", "movimientos", "deudas", "agente", "ajustes"];
-
-  function navTo(name) {
-    current = name;
-    render();
-    document.querySelectorAll(".nav button").forEach((b) =>
-      b.classList.toggle("active", b.dataset.nav === name)
-    );
-    app.querySelector(".screen") && (app.scrollTop = 0);
-    window.scrollTo(0, 0);
-  }
-
-  // ---------- Pantallas ----------
-  function screenInicio() {
-    const a = window.Advisor.analyze();
-    const s = S.get();
-
-    if (!a.hasData) {
-      return `
-        <div class="screen active" id="s-inicio">
-          <div class="card" style="text-align:center;padding:28px 20px">
-            <div style="font-size:52px">👋</div>
-            <h2 style="margin:12px 0 6px">Hola, empecemos</h2>
-            <p class="muted" style="margin:0 0 20px">Para darte un buen análisis necesito entender tu situación. Vamos primero por tus <b>deudas</b>.</p>
-            <button class="btn primary" data-goto="deudas">🏦 Registrar mi primera deuda</button>
-            <div class="btn-row">
-              <button class="btn secondary sm" data-quick="income">💵 Agregar ingreso</button>
-              <button class="btn secondary sm" data-quick="expense">🧾 Agregar gasto</button>
-            </div>
-          </div>
-          ${planCard(a)}
-        </div>`;
-    }
-
-    const hc = a.health;
-    const ringColor = hc.color === "good" ? "var(--good)" : hc.color === "warn" ? "var(--warn)" : "var(--danger)";
-
-    return `
-      <div class="screen active" id="s-inicio">
-        <div class="hero">
-          <div class="label">Saldo disponible</div>
-          <div class="amount">${F.money(a.balance)}</div>
-          <div class="row">
-            <div class="pill"><div class="k">Ingresos (mes)</div><div class="v" style="color:var(--income)">${F.money(a.monthIncome)}</div></div>
-            <div class="pill"><div class="k">Gastos (mes)</div><div class="v" style="color:var(--expense)">${F.money(a.monthExpense)}</div></div>
-          </div>
-        </div>
-
-        <div class="spend-banner ${a.canSpend ? "yes" : "no"}">
-          <div class="emoji">${a.canSpend ? "🟢" : "🔴"}</div>
-          <div style="flex:1">
-            <div class="title">${a.canSpend ? "Sí puedes gastar" : "Mejor no gastes ahora"}</div>
-            <div class="desc">${a.canSpend
-              ? (a.nextPayday ? `Hasta tu próximo pago (${F.fecha(a.nextPayday)}), después de tus obligaciones y colchón:` : "Después de reservar tus pagos y colchón, te queda:")
-              : "Necesitas ese dinero para tus próximos pagos y colchón."}</div>
-            <div class="big">${a.canSpend ? F.money(a.safeToSpend) : F.money(Math.abs(a.safeToSpend)) + " en rojo"}</div>
-          </div>
-        </div>
-
-        ${a.accountBalances && a.accountBalances.length ? `
-        <div class="card tight">
-          ${a.accountBalances.map((ac) => `
-            <div class="list-item">
-              <div class="avatar">${accIcon(ac.name)}</div>
-              <div class="li-main"><div class="li-title">${esc(ac.name)}</div></div>
-              <div class="li-amount ${ac.amount >= 0 ? "income" : "expense"}">${F.money(ac.amount)}</div>
-            </div>`).join("")}
-          ${a.savings > 0 ? `<div class="list-item"><div class="avatar">🐷</div><div class="li-main"><div class="li-title">Ahorro</div><div class="li-sub">guardado, no para gastar</div></div><div class="li-amount income">${F.money(a.savings)}</div></div>` : ""}
-          ${a.nextPayday ? `<div class="list-item"><div class="avatar">🗓️</div><div class="li-main"><div class="li-title">Próxima nómina</div><div class="li-sub">${F.relativo(a.daysToPayday)}</div></div><div class="li-amount">${F.fecha(a.nextPayday)}</div></div>` : ""}
-        </div>` : ""}
-
-        <div class="card health">
-          <div class="ring" style="--p:${hc.score || 0};--ring-color:${ringColor}">
-            <span class="score">${hc.score == null ? "–" : hc.score}</span>
-          </div>
-          <div>
-            <div class="h-label">Salud financiera: ${hc.label}</div>
-            <div class="h-sub">${a.debtToIncome > 0 ? "Carga de deuda: " + F.pct(a.debtToIncome) + " del ingreso" : "Sin deudas activas 🎉"}</div>
-            <div class="h-sub">Fondo de emergencia: ${a.savings > 0 ? F.money(a.savings) + " (" + a.emergencyMonths.toFixed(1) + " meses)" : "sin registrar"}</div>
-          </div>
-        </div>
-
-        ${a.next30.length ? `
-        <div class="section-title">Próximos pagos</div>
-        <div class="card tight">
-          ${a.next30.slice(0, 4).map((u) => `
-            <div class="list-item">
-              <div class="avatar">📅</div>
-              <div class="li-main">
-                <div class="li-title">${esc(u.name)}</div>
-                <div class="li-sub">${F.relativo(u.dias)} · ${F.fechaLarga(u.due)}</div>
-              </div>
-              <div class="li-amount expense">${F.money(u.amount)}</div>
-            </div>`).join("")}
-        </div>` : ""}
-
-        <div class="section-title">Alertas del agente</div>
-        ${a.alerts.map(alertCard).join("")}
-
-        <button class="btn primary mt8" data-goto="agente">🤖 Ver análisis y plan completo</button>
-      </div>`;
-  }
-
-  function alertCard(al) {
-    return `<div class="alert ${al.level}">
-      <div class="ico">${al.icon}</div>
-      <div><div class="a-title">${esc(al.title)}</div><div class="a-text">${esc(al.text)}</div></div>
-    </div>`;
-  }
-
-  function planCard(a) {
-    return `
-      <div class="section-title">Plan de acción</div>
-      ${a.plan.map((p) => `
-        <div class="step">
-          <div class="n">${p.n}</div>
-          <div><div class="s-title"><span class="ico">${p.icon}</span>${esc(p.title)}</div>
-          <div class="s-text">${esc(p.text)}</div></div>
-        </div>`).join("")}`;
-  }
-
-  function screenMovimientos() {
-    const s = S.get();
-    const txs = s.transactions.slice().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
-
-    // agrupar por fecha
-    const groups = {};
-    txs.forEach((t) => { (groups[t.date] = groups[t.date] || []).push(t); });
-    const dates = Object.keys(groups).sort((a, b) => (a < b ? 1 : -1));
-
-    const body = txs.length === 0
-      ? `<div class="empty"><div class="big-emoji">🧾</div><p>Aún no hay movimientos.<br>Toca el botón <b>+</b> para agregar tu primer ingreso o gasto.</p></div>`
-      : dates.map((d) => `
-          <div class="section-title">${F.fechaLarga(d)}</div>
-          <div class="card tight">
-            ${groups[d].map((t) => `
-              <div class="list-item" data-tx="${t.id}">
-                <div class="avatar">${catIcon(t.category)}</div>
-                <div class="li-main">
-                  <div class="li-title">${esc(t.note || t.category)}</div>
-                  <div class="li-sub">${esc(t.category)} · ${accIcon(t.account)} ${esc(t.account || "Efectivo")}${t.recurring ? " · 🔁" : ""}</div>
-                </div>
-                <div class="li-amount ${(t.type === "income" || t.type === "retiro") ? "income" : "expense"}">${(t.type === "income" || t.type === "retiro") ? "+" : "−"}${F.money(t.amount)}</div>
-              </div>`).join("")}
-          </div>`).join("");
-
-    return `<div class="screen active" id="s-movimientos">
-      <div class="btn-row" style="margin-bottom:14px">
-        <button class="btn secondary sm" data-quick="income">💵 Ingreso</button>
-        <button class="btn secondary sm" data-quick="expense">🧾 Gasto</button>
-        <button class="btn secondary sm" data-quick="saving">🐷 Ahorro</button>
-      </div>
-      ${body}
-    </div>`;
-  }
-
-  function screenDeudas() {
-    const s = S.get();
-    const a = window.Advisor.analyze();
-    const debts = s.debts.slice().sort((x, y) => y.apr - x.apr);
-
-    const totalCard = debts.length ? `
-      <div class="hero" style="background:linear-gradient(135deg,#33201f,#2a1618)">
-        <div class="label">Deuda total</div>
-        <div class="amount">${F.money(a.totalDebt)}</div>
-        <div class="row">
-          <div class="pill"><div class="k">Cuotas/mes</div><div class="v">${F.money(a.totalMinPayments)}</div></div>
-          <div class="pill"><div class="k">% de tu ingreso</div><div class="v">${a.refIncome ? F.pct(a.debtToIncome) : "–"}</div></div>
-        </div>
-      </div>` : "";
-
-    const list = debts.length === 0
-      ? `<div class="empty"><div class="big-emoji">🏦</div><p>Sin deudas registradas.<br>Registra tus deudas para que el agente arme tu plan de pago.</p></div>`
-      : debts.map((d, i) => {
-          const paid = d.total > 0 ? Math.max(0, Math.min(1, (d.total - d.remaining) / d.total)) : 0;
-          const due = window.Advisor.nextDueDate(d.dueDay);
-          const dias = F.diasEntre(F.hoy(), due);
-          return `
-          <div class="debt-card" data-debt="${d.id}">
-            <div class="d-top">
-              <div>
-                <div class="d-name">${i === 0 && d.apr > 0 ? "🔥 " : ""}${esc(d.name)}</div>
-                ${d.creditor ? `<div class="d-cred">${esc(d.creditor)}</div>` : ""}
-              </div>
-              <div style="text-align:right"><div class="d-rem">${F.money(d.remaining)}</div>
-              <div class="d-cred">de ${F.money(d.total)}</div></div>
-            </div>
-            <div class="progress"><span style="width:${(paid * 100).toFixed(0)}%"></span></div>
-            <div class="d-meta">
-              <span class="tag ${d.apr >= 25 ? "hot" : ""}">${F.pct(d.apr / 100, 1)} E.A.</span>
-              <span class="tag">Cuota ${F.money(d.minPayment)}</span>
-              <span class="tag due">Vence ${F.relativo(dias)}</span>
-            </div>
-            <div class="debt-actions">
-              <button class="btn secondary sm" data-pay="${d.id}">💸 Registrar abono</button>
-              <button class="btn ghost sm" data-editdebt="${d.id}">✏️ Editar</button>
-            </div>
-          </div>`;
-        }).join("");
-
-    return `<div class="screen active" id="s-deudas">
-      ${totalCard}
-      <button class="btn primary" data-adddebt="1" style="margin-bottom:14px">＋ Agregar deuda</button>
-      ${list}
-    </div>`;
-  }
-
-  function screenAgente() {
-    const a = window.Advisor.analyze();
-    const s = S.get();
-
-    if (!a.hasData) {
-      return `<div class="screen active" id="s-agente">
-        <div class="card" style="text-align:center;padding:28px 20px">
-          <div style="font-size:48px">🤖</div>
-          <h2 style="margin:12px 0 6px">Tu agente financiero</h2>
-          <p class="muted">Registra tus deudas, ingresos y gastos y aquí verás tu diagnóstico completo, alertas, fechas de pago y un plan de acción.</p>
-          <button class="btn primary" data-goto="deudas">Empezar por mis deudas</button>
-        </div>
-      </div>`;
-    }
-
-    // Simulación de pago
-    const extra = window.__extra || 0;
-    const av = window.Advisor.simulatePayoff(s.debts, extra, "avalanche");
-
-    return `<div class="screen active" id="s-agente">
-      <div class="section-title">Diagnóstico</div>
-      <div class="kpi-grid">
-        <div class="kpi"><div class="k">Saldo disponible</div><div class="v ${a.balance >= 0 ? "good" : "bad"}">${F.money(a.balance)}</div></div>
-        <div class="kpi"><div class="k">Puedo gastar</div><div class="v ${a.canSpend ? "good" : "bad"}">${a.canSpend ? F.money(a.safeToSpend) : F.money(0)}</div></div>
-        <div class="kpi"><div class="k">Deuda total</div><div class="v">${F.money(a.totalDebt)}</div></div>
-        <div class="kpi"><div class="k">Ahorro del mes</div><div class="v ${a.savingsRate >= 0 ? "good" : "bad"}">${F.pct(a.savingsRate)}</div></div>
-      </div>
-
-      ${a.accountBalances && a.accountBalances.length ? `
-      <div class="section-title">Saldos por cuenta</div>
-      <div class="card tight">
-        ${a.accountBalances.map((ac) => `
-          <div class="list-item">
-            <div class="avatar">${accIcon(ac.name)}</div>
-            <div class="li-main"><div class="li-title">${esc(ac.name)}</div></div>
-            <div class="li-amount ${ac.amount >= 0 ? "income" : "expense"}">${F.money(ac.amount)}</div>
-          </div>`).join("")}
-      </div>` : ""}
-
-      ${a.refExpense > 0 ? `
-      <div class="section-title">Fondo de emergencia</div>
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <div><div class="d-rem">${F.money(a.savings)}</div><div class="d-cred">${a.emergencyMonths.toFixed(1)} de 3 meses recomendados</div></div>
-          <div class="tag ${a.emergencyMonths >= 3 ? "" : "hot"}">${a.emergencyMonths >= 6 ? "Excelente" : a.emergencyMonths >= 3 ? "Sólido" : a.emergencyMonths >= 1 ? "En camino" : "Bajo"}</div>
-        </div>
-        <div class="progress" style="margin-top:12px"><span style="width:${Math.min(100, (a.emergencyMonths / 3) * 100).toFixed(0)}%"></span></div>
-        <div class="hint">Meta 3 meses: ${F.money(a.emergencyTarget)} · Ideal 6 meses: ${F.money(a.emergencyTargetFull)}. ${a.savings === 0 ? "Registra tu ahorro en Ajustes para un mejor análisis." : ""}</div>
-      </div>` : ""}
-
-      ${a.monthlyTarget > 0 ? `
-      <div class="section-title">Plan de ahorro mensual</div>
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:baseline">
-          <div><div class="d-cred">Este mes deberías ahorrar (${F.pct(a.goalPct)})</div><div class="d-rem">${F.money(a.monthlyTarget)}</div></div>
-          <div class="tag ${a.savedThisMonth >= a.monthlyTarget ? "" : "hot"}">${a.savedThisMonth >= a.monthlyTarget ? "✅ Cumplida" : "Vas " + F.money(Math.max(0, a.savedThisMonth))}</div>
-        </div>
-        <div class="progress" style="margin-top:12px"><span style="width:${Math.min(100, Math.max(0, a.savingsProgress * 100)).toFixed(0)}%"></span></div>
-        <div class="hint">${a.savedThisMonth >= a.monthlyTarget
-          ? `Ya cubriste tu meta este mes. Aparta ${F.money(a.monthlyTarget)} a tu ahorro. 🎉`
-          : `Te faltan ${F.money(a.savingsGap)} para tu meta. ${a.categories[0] ? `Podrías recortar de "${a.categories[0].name}".` : "Revisa tus gastos."}`}</div>
-        ${a.monthlyHistory.length > 1 ? `
-        <div class="divider"></div>
-        <div class="d-cred" style="margin-bottom:8px">Mes a mes (ahorrado vs meta)</div>
-        ${a.monthlyHistory.map((m) => `
-          <div class="list-item">
-            <div class="avatar">${m.met ? "✅" : "•"}</div>
-            <div class="li-main"><div class="li-title" style="text-transform:capitalize">${esc(m.label)}</div><div class="li-sub">meta ${F.money(m.target)}</div></div>
-            <div class="li-amount ${m.saved > 0 ? "income" : ""}">${F.money(m.saved)}</div>
-          </div>`).join("")}` : ""}
-      </div>` : ""}
-
-      <div class="section-title">Alertas</div>
-      ${a.alerts.map(alertCard).join("")}
-
-      ${a.upcoming.length ? `
-      <div class="section-title">Calendario de pagos</div>
-      <div class="card tight">
-        ${a.upcoming.map((u) => `
-          <div class="list-item">
-            <div class="avatar" style="${u.dias <= 3 ? "border-color:#5a2a30" : ""}">${u.dias <= 3 ? "⏰" : "📅"}</div>
-            <div class="li-main">
-              <div class="li-title">${esc(u.name)}</div>
-              <div class="li-sub">${F.fechaLarga(u.due)} · ${F.relativo(u.dias)}</div>
-            </div>
-            <div class="li-amount expense">${F.money(u.amount)}</div>
-          </div>`).join("")}
-      </div>` : ""}
-
-      ${a.totalDebt > 0 ? `
-      <div class="section-title">Plan de salida de deudas (método avalancha)</div>
-      <div class="card">
-        <p class="small muted" style="margin-top:0">Pagas el mínimo en todas y el excedente a la de mayor tasa. Simula cuánto rinde un abono extra mensual:</p>
-        <div class="field amount">
-          <label>Abono extra por mes</label>
-          <input type="text" inputmode="numeric" id="extra-input" value="${extra ? F.num(extra) : ""}" placeholder="$ 0">
-        </div>
-        <div class="kpi-grid">
-          <div class="kpi"><div class="k">Tiempo para saldar</div><div class="v">${av.feasible ? (av.years ? av.years + "a " : "") + av.remMonths + "m" : "> 50 años"}</div></div>
-          <div class="kpi"><div class="k">Intereses totales</div><div class="v bad">${F.money(av.totalInterest)}</div></div>
-        </div>
-        ${!av.feasible ? `<div class="hint" style="color:var(--danger)">⚠️ Con esos abonos las deudas casi no bajan. Aumenta el abono extra o renegocia la tasa.</div>` : ""}
-        <div class="hint">Orden sugerido: ${a.byRate.map((d, i) => `${i + 1}. ${esc(d.name)}`).join(" → ")}</div>
-      </div>` : ""}
-
-      ${a.categories.length ? `
-      <div class="section-title">¿A dónde se va tu plata? (mes)</div>
-      <div class="card">
-        ${a.categories.slice(0, 6).map((c) => `
-          <div class="catbar">
-            <div class="cb-top"><span class="cb-name">${catIcon(c.name)} ${esc(c.name)}</span><span class="cb-amt">${F.money(c.amount)} · ${F.pct(c.pct)}</span></div>
-            <div class="cb-track"><div class="cb-fill" style="width:${(c.pct * 100).toFixed(0)}%"></div></div>
-          </div>`).join("")}
-      </div>` : ""}
-
-      ${planCard(a)}
-    </div>`;
-  }
-
-  function screenAjustes() {
-    const s = S.get();
-    return `<div class="screen active" id="s-ajustes">
-      <div class="section-title">💰 Mi ahorro</div>
-      <div class="card">
-        <div class="field amount" style="margin-bottom:8px">
-          <label>Ahorro que ya tenías (inicial)</label>
-          <input type="text" inputmode="numeric" id="set-savingsbal" value="${s.settings.savings ? F.num(s.settings.savings) : ""}" placeholder="$ 0">
-        </div>
-        <div class="hint" style="margin-bottom:14px">Lo que tenías guardado antes de empezar. De aquí en adelante, para apartar plata usa el botón <b>+ → 🐷 Ahorro</b> en Movimientos: eso baja tu saldo y suma a tu ahorro. Total ahorro hoy: <b>${F.money(window.Advisor.analyze().savings)}</b>.</div>
-        <div class="field">
-          <label>¿Cuánto quieres ahorrar cada mes? (% de tu ingreso)</label>
-          <input type="number" min="0" max="90" id="set-savings" value="${Math.round((s.settings.savingsGoalPct || 0.1) * 100)}">
-          <div class="hint">Ej: 10%. El agente calculará mes a mes cuánto apartar según tus ingresos y te dirá si vas bien.</div>
-        </div>
-        <button class="btn primary" data-savesettings="1">Guardar</button>
-      </div>
-
-      <div class="section-title">Días de pago (nómina)</div>
-      <div class="card">
-        <p class="small muted" style="margin-top:0">¿Qué días te pagan? Si es quincenal, pon los dos (ej. 15 y 30). El agente los usa para planear entre pagos.</p>
-        <div class="field-row">
-          <div class="field"><label>Día de pago 1</label>
-            <input type="number" min="1" max="31" id="set-pay1" value="${(s.settings.paydays && s.settings.paydays[0]) || s.settings.payday || ""}" placeholder="Ej: 15"></div>
-          <div class="field"><label>Día de pago 2</label>
-            <input type="number" min="1" max="31" id="set-pay2" value="${(s.settings.paydays && s.settings.paydays[1]) || ""}" placeholder="Ej: 30"></div>
-        </div>
-        <button class="btn primary" data-savesettings="1">Guardar</button>
-      </div>
-
-      <div class="section-title">Cuentas / medios de pago</div>
-      <div class="card">
-        <p class="small muted" style="margin-top:0">Dónde tienes tu dinero. Cada movimiento se marca con una de estas.</p>
-        <div class="chips" style="margin-bottom:12px">
-          ${(s.accounts || []).map((a) => `<span class="chip" style="cursor:default">${accIcon(a)} ${esc(a)} ${(s.accounts.length > 1) ? `<span class="link" data-delacc="${esc(a)}" style="margin-left:6px">✕</span>` : ""}</span>`).join("")}
-        </div>
-        <button class="btn secondary block" data-addacc="1">➕ Agregar cuenta (ej. Nequi, Ahorros)</button>
-      </div>
-
-      ${window.Auth ? `
-      <div class="section-title">Tu cuenta</div>
-      <div class="card">
-        <p class="small muted" style="margin-top:0">Sesión de <b>${esc(window.Auth.getActiveUser())}</b>. Cada usuario ve solo sus propias finanzas.</p>
-        <button class="btn secondary block" data-changepw="1">🔑 Cambiar mi contraseña</button>
-        <div class="btn-row">
-          <button class="btn secondary sm" data-adduser="1">➕ Agregar usuario</button>
-          <button class="btn ghost sm" data-switchuser="1">🔄 Cambiar de usuario</button>
-        </div>
-        <div class="divider"></div>
-        <div class="d-cred" style="margin-bottom:8px">Usuarios en este teléfono</div>
-        ${window.Auth.listProfiles().map((pr) => `
-          <div class="list-item">
-            <div class="avatar">👤</div>
-            <div class="li-main"><div class="li-title">${esc(pr.user)}${pr.id === window.Auth.getActiveId() ? " (tú)" : ""}</div></div>
-            ${pr.id === window.Auth.getActiveId()
-              ? `<span class="small muted">sesión actual</span>`
-              : `<button class="btn danger sm" style="flex:0 0 auto;padding:7px 12px" data-deluser="${pr.id}" data-delusername="${esc(pr.user)}">Eliminar</button>`}
-          </div>`).join("")}
-        <div class="hint">Para eliminar el usuario en el que estás ahora, primero cambia a otro (🔄) y elimínalo desde ahí.</div>
-      </div>` : ""}
-
-      <div class="section-title">Tus datos</div>
-      <div class="card">
-        <p class="small muted" style="margin-top:0">Todo se guarda solo en este dispositivo. Haz una copia para no perderla.</p>
-        <div class="btn-row">
-          <button class="btn secondary sm" data-export="1">⬇️ Exportar copia</button>
-          <button class="btn secondary sm" data-import="1">⬆️ Importar</button>
-        </div>
-        <input type="file" id="import-file" accept="application/json" style="display:none">
-        <button class="btn danger block mt16" data-reset="1">🗑️ Borrar mis datos (este usuario)</button>
-      </div>
-
-      <div class="section-title">Reiniciar la app</div>
-      <div class="card">
-        <p class="small muted" style="margin-top:0">Borra <b>TODO</b> de este dispositivo: todos los usuarios, sus movimientos, deudas y ahorros. La app vuelve a empezar desde cero. No se puede deshacer.</p>
-        <button class="btn danger block" data-hardreset="1">♻️ Reiniciar app (borrar todo y todos los usuarios)</button>
-      </div>
-
-      <div class="section-title">Instalar en tu teléfono</div>
-      <div class="card">
-        <p class="small muted" style="margin-top:0">
-          <b>Android/Chrome:</b> menú ⋮ → "Agregar a pantalla de inicio".<br>
-          <b>iPhone/Safari:</b> compartir <span style="font-family:monospace">⬆️</span> → "Agregar a inicio".<br>
-          Se abrirá como una app y funcionará sin internet.
-        </p>
-      </div>
-      <div class="center muted small" style="margin-top:20px">Finanzas · versión 9 · hecho para ti 💚</div>
-    </div>`;
-  }
-
-  // ---------- Render principal ----------
-  function render() {
-    let html = "";
-    if (current === "inicio") html = screenInicio();
-    else if (current === "movimientos") html = screenMovimientos();
-    else if (current === "deudas") html = screenDeudas();
-    else if (current === "agente") html = screenAgente();
-    else if (current === "ajustes") html = screenAjustes();
-
-    const existing = app.querySelector(".screen");
-    const node = el(html);
-    if (existing) existing.replaceWith(node); else app.insertBefore(node, app.querySelector(".nav"));
-    updateHeader();
-  }
-
-  function updateHeader() {
-    const titles = {
-      inicio: ["Finanzas", fechaHoy()],
-      movimientos: ["Movimientos", "Ingresos y gastos"],
-      deudas: ["Deudas", "Tu plan para salir de ellas"],
-      agente: ["Agente", "Tu análisis financiero"],
-      ajustes: ["Ajustes", "Datos y preferencias"],
-    };
-    const h = document.querySelector(".header");
-    h.querySelector("h1").textContent = titles[current][0];
-    h.querySelector(".sub").textContent = titles[current][1];
-  }
-
-  function fechaHoy() {
-    const d = new Date();
-    return `${F.DIAS[d.getDay()]}, ${d.getDate()} de ${F.MESES[d.getMonth()]}`;
-  }
-
-  // ---------- Sheets (modales) ----------
+  const main = document.getElementById("main");
   const overlay = document.getElementById("sheet-overlay");
+  const onbRoot = document.getElementById("onb-root");
+  let navActual = "inicio";
+  const expandidos = new Set(); // días del plan expandidos
+
+  // ---------- utilidades ----------
+  const esc = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  const clamp = (n, a, b) => Math.max(a, Math.min(b, n));
+  const pctFill = (val, obj) => obj > 0 ? clamp(Math.round((val / obj) * 100), 0, 100) : 0;
+
   function openSheet(html) {
     overlay.innerHTML = `<div class="sheet"><div class="grab"></div>${html}</div>`;
     overlay.classList.add("open");
+    document.body.style.overflow = "hidden";
   }
-  function closeSheet() { overlay.classList.remove("open"); overlay.innerHTML = ""; }
+  function closeSheet() {
+    overlay.classList.remove("open");
+    overlay.innerHTML = "";
+    document.body.style.overflow = "";
+  }
   overlay.addEventListener("click", (e) => { if (e.target === overlay) closeSheet(); });
 
-  function txSheet(type, txId) {
-    const s = S.get();
-    const editing = txId ? s.transactions.find((t) => t.id === txId) : null;
-    const t = editing || { type, amount: "", category: "", account: "", date: F.ymd(F.hoy()), note: "", recurring: false };
-    const isSaving = t.type === "saving" || t.type === "retiro";
-    const cats = isSaving ? [] : (s.categories[t.type] || s.categories.expense);
-    const accts = (s.accounts && s.accounts.length) ? s.accounts : ["Efectivo", "Cuenta bancaria"];
-    const curAcc = t.account || accts[0];
+  // ---------- navegación ----------
+  function irA(nav) {
+    navActual = nav;
+    document.querySelectorAll(".nav button").forEach((b) =>
+      b.classList.toggle("active", b.dataset.nav === nav));
+    render();
+    main.scrollIntoView({ block: "start" });
+    window.scrollTo(0, 0);
+  }
+  document.querySelectorAll(".nav button").forEach((b) =>
+    b.addEventListener("click", () => irA(b.dataset.nav)));
+  document.getElementById("btn-ajustes").addEventListener("click", sheetAjustes);
+  document.getElementById("fab").addEventListener("click", sheetAgregar);
 
-    const titleMap = { income: "Nuevo ingreso", expense: "Nuevo gasto", saving: "Aporte a ahorro", retiro: "Retiro de ahorro" };
-    const accLabel = t.type === "income" ? "¿A dónde entra?"
-      : t.type === "expense" ? "¿Con qué pagaste?"
-      : t.type === "saving" ? "¿De qué cuenta lo apartas?"
-      : "¿A qué cuenta vuelve?";
-
-    openSheet(`
-      <h2>${editing ? "Editar" : titleMap[t.type]}</h2>
-      <div class="segmented" id="tx-type">
-        <button data-t="income" class="${t.type === "income" ? "active" : ""}">💵 Ingreso</button>
-        <button data-t="expense" class="${t.type === "expense" ? "active expense-active" : ""}">🧾 Gasto</button>
-        <button data-t="saving" class="${isSaving ? "active" : ""}">🐷 Ahorro</button>
-      </div>
-      ${isSaving ? `
-      <div class="segmented" id="tx-savekind">
-        <button data-k="saving" class="${t.type === "saving" ? "active" : ""}">➕ Aporte (guardar)</button>
-        <button data-k="retiro" class="${t.type === "retiro" ? "active expense-active" : ""}">➖ Retiro (sacar)</button>
-      </div>` : ""}
-      <div class="field amount">
-        <label>Monto</label>
-        <input type="text" inputmode="numeric" id="tx-amount" value="${t.amount ? F.num(t.amount) : ""}" placeholder="$ 0" autofocus>
-      </div>
-      ${!isSaving ? `
-      <div class="field">
-        <label>Categoría</label>
-        <div class="chips" id="tx-cats">
-          ${cats.map((c) => `<button class="chip ${t.category === c ? "active" : ""}" data-cat="${esc(c)}">${catIcon(c)} ${esc(c)}</button>`).join("")}
+  // ======================================================================
+  //  COMPONENTES REUTILIZABLES
+  // ======================================================================
+  function macroRing(nut) {
+    const o = nut.objetivo, c = nut.consumido;
+    const p = pctFill(c.kcal, o.kcal);
+    const restante = Math.max(0, o.kcal - c.kcal);
+    return `
+      <div class="macro-ring-row">
+        <div class="big-ring" style="--p:${p}">
+          <div class="rv">
+            <div class="n">${Fmt.num(c.kcal)}</div>
+            <div class="l">de ${Fmt.num(o.kcal)} kcal</div>
+          </div>
         </div>
-      </div>` : `
-      <div class="alert info" style="margin-bottom:14px"><div class="ico">🐷</div><div class="a-text">${t.type === "saving"
-        ? "Este dinero <b>sale de tu saldo disponible</b> y suma a tu ahorro."
-        : "Este dinero <b>vuelve a tu saldo disponible</b> y baja de tu ahorro."}</div></div>`}
-      <div class="field">
-        <label>${accLabel}</label>
-        <div class="chips" id="tx-accs">
-          ${accts.map((a) => `<button class="chip ${curAcc === a ? "active" : ""}" data-acc="${esc(a)}">${accIcon(a)} ${esc(a)}</button>`).join("")}
+        <div class="macro-bars">
+          ${macroBar("Proteína", "prot", c.prot, o.prot)}
+          ${macroBar("Carbos", "carbs", c.carbs, o.carbs)}
+          ${macroBar("Grasa", "grasa", c.grasa, o.grasa)}
+          <div class="small muted" style="margin-top:8px">${restante > 0 ? `Te quedan <b>${Fmt.num(restante)} kcal</b>` : "Objetivo cubierto ✅"}</div>
         </div>
-      </div>
-      <div class="field">
-        <label>Nota (opcional)</label>
-        <input type="text" id="tx-note" value="${esc(t.note)}" placeholder="${isSaving ? "Ej: ahorro del mes" : "Ej: mercado del mes"}">
-      </div>
-      <div class="field">
-        <label>Fecha</label>
-        <input type="date" id="tx-date" value="${t.date}">
-      </div>
-      ${!isSaving ? `
-      <label style="display:flex;align-items:center;gap:10px;margin-bottom:16px;color:var(--muted);font-size:14px">
-        <input type="checkbox" id="tx-rec" ${t.recurring ? "checked" : ""} style="width:20px;height:20px"> 🔁 Es recurrente (cada mes)
-      </label>` : ""}
-      <button class="btn primary" id="tx-save">${editing ? "Guardar cambios" : "Agregar"}</button>
-      ${editing ? `<button class="btn danger block mt8" id="tx-del">Eliminar</button>` : ""}
-    `);
+      </div>`;
+  }
+  function macroBar(nombre, clase, val, obj) {
+    return `<div class="mbar">
+      <div class="mt"><span class="nm ${clase}">${nombre}</span><span class="vl">${Fmt.num(val)} / ${Fmt.num(obj)} g</span></div>
+      <div class="track"><div class="fill ${clase}" style="width:${pctFill(val, obj)}%"></div></div>
+    </div>`;
+  }
 
-    let selType = t.type;
-    let selCat = isSaving ? "Ahorro" : (t.category || cats[0]);
-    let selAcc = curAcc;
-    if (!isSaving && !t.category) {
-      const first = overlay.querySelector(`[data-cat="${cats[0]}"]`);
-      first && first.classList.add("active");
+  function alertaHTML(a) {
+    return `<div class="alert ${a.tipo}">
+      <div class="ico">${a.ico}</div>
+      <div><div class="a-title">${esc(a.titulo)}</div><div class="a-text">${esc(a.texto)}</div></div>
+    </div>`;
+  }
+  function tipHTML(t) {
+    return `<div class="tip"><div class="ico">${t.ico}</div>
+      <div><div class="t-title">${esc(t.titulo)}</div><div class="t-text">${esc(t.texto)}</div></div></div>`;
+  }
+
+  function waterTracker(dateStr) {
+    const p = Store.get().profile;
+    const meta = p.aguaMetaVasos || 8;
+    const actual = Store.getAgua(dateStr);
+    let cups = "";
+    for (let i = 1; i <= meta; i++) {
+      cups += `<div class="cup ${i <= actual ? "full" : ""}" data-water="${i}">${i <= actual ? '<span>💧</span>' : ""}</div>`;
     }
-    overlay.querySelector("#tx-accs").addEventListener("click", (e) => {
-      const b = e.target.closest("[data-acc]"); if (!b) return;
-      overlay.querySelectorAll("#tx-accs .chip").forEach((c) => c.classList.remove("active"));
-      b.classList.add("active"); selAcc = b.dataset.acc;
-    });
-    overlay.querySelector("#tx-type").addEventListener("click", (e) => {
-      const b = e.target.closest("[data-t]"); if (!b) return;
-      const nt = b.dataset.t;
-      txSheet(nt, txId && editing && editing.type === nt ? txId : null);
-    });
-    const sk = overlay.querySelector("#tx-savekind");
-    sk && sk.addEventListener("click", (e) => {
-      const b = e.target.closest("[data-k]"); if (!b) return;
-      txSheet(b.dataset.k, txId && editing && editing.type === b.dataset.k ? txId : null);
-    });
-    const catsEl = overlay.querySelector("#tx-cats");
-    catsEl && catsEl.addEventListener("click", (e) => {
-      const b = e.target.closest("[data-cat]"); if (!b) return;
-      overlay.querySelectorAll("#tx-cats .chip").forEach((c) => c.classList.remove("active"));
-      b.classList.add("active"); selCat = b.dataset.cat;
-    });
-    overlay.querySelector("#tx-save").addEventListener("click", () => {
-      const amount = F.parseMoney(overlay.querySelector("#tx-amount").value);
-      if (amount <= 0) { overlay.querySelector("#tx-amount").focus(); return; }
-      const recEl = overlay.querySelector("#tx-rec");
-      const data = {
-        type: selType, amount,
-        category: isSaving ? "Ahorro" : selCat,
-        account: selAcc,
-        note: overlay.querySelector("#tx-note").value,
-        date: overlay.querySelector("#tx-date").value,
-        recurring: recEl ? recEl.checked : false,
-      };
-      if (editing) S.updateTransaction(editing.id, data); else S.addTransaction(data);
-      closeSheet(); render();
-    });
-    const del = overlay.querySelector("#tx-del");
-    del && del.addEventListener("click", () => {
-      if (confirm("¿Eliminar este movimiento?")) { S.deleteTransaction(editing.id); closeSheet(); render(); }
-    });
+    return `<div class="card">
+      <div class="row-between"><div class="card-title"><span class="ico">💧</span>Agua</div>
+      <div class="muted small">${actual}/${meta} vasos</div></div>
+      <div class="water-row" id="water-row">${cups}</div>
+    </div>`;
   }
 
-  function debtSheet(debtId) {
-    const s = S.get();
-    const d = debtId ? s.debts.find((x) => x.id === debtId) : { name: "", creditor: "", total: "", remaining: "", apr: "", minPayment: "", dueDay: "" };
-    openSheet(`
-      <h2>${debtId ? "Editar deuda" : "Nueva deuda"}</h2>
-      <div class="field"><label>Nombre</label>
-        <input type="text" id="d-name" value="${esc(d.name)}" placeholder="Ej: Tarjeta Visa" autofocus></div>
-      <div class="field"><label>Entidad / acreedor (opcional)</label>
-        <input type="text" id="d-cred" value="${esc(d.creditor)}" placeholder="Ej: Bancolombia"></div>
-      <div class="field-row">
-        <div class="field"><label>Monto original</label>
-          <input type="text" inputmode="numeric" id="d-total" value="${d.total ? F.num(d.total) : ""}" placeholder="$ 0"></div>
-        <div class="field"><label>Saldo actual</label>
-          <input type="text" inputmode="numeric" id="d-rem" value="${d.remaining !== "" && d.remaining != null ? F.num(d.remaining) : ""}" placeholder="$ 0"></div>
-      </div>
-      <div class="field-row">
-        <div class="field"><label>Tasa % anual (E.A.)</label>
-          <input type="text" inputmode="decimal" id="d-apr" value="${d.apr || ""}" placeholder="Ej: 28"></div>
-        <div class="field"><label>Cuota mínima/mes</label>
-          <input type="text" inputmode="numeric" id="d-min" value="${d.minPayment ? F.num(d.minPayment) : ""}" placeholder="$ 0"></div>
-      </div>
-      <div class="field"><label>Día de pago (del mes)</label>
-        <input type="number" min="1" max="31" id="d-due" value="${d.dueDay || ""}" placeholder="Ej: 15">
-        <div class="hint">¿No sabes la tasa? Pon un estimado; para tarjetas suele ser 25–30% E.A.</div>
-      </div>
-      <button class="btn primary" id="d-save">${debtId ? "Guardar cambios" : "Agregar deuda"}</button>
-      ${debtId ? `<button class="btn danger block mt8" id="d-del">Eliminar deuda</button>` : ""}
-    `);
-    overlay.querySelector("#d-save").addEventListener("click", () => {
-      const data = {
-        name: overlay.querySelector("#d-name").value || "Deuda",
-        creditor: overlay.querySelector("#d-cred").value,
-        total: F.parseMoney(overlay.querySelector("#d-total").value),
-        remaining: F.parseMoney(overlay.querySelector("#d-rem").value) || F.parseMoney(overlay.querySelector("#d-total").value),
-        apr: parseFloat(String(overlay.querySelector("#d-apr").value).replace(",", ".")) || 0,
-        minPayment: F.parseMoney(overlay.querySelector("#d-min").value),
-        dueDay: +overlay.querySelector("#d-due").value || 1,
-      };
-      if (data.total <= 0 && data.remaining <= 0) { overlay.querySelector("#d-total").focus(); return; }
-      if (debtId) S.updateDebt(debtId, data); else S.addDebt(data);
-      closeSheet(); render();
-    });
-    const del = overlay.querySelector("#d-del");
-    del && del.addEventListener("click", () => {
-      if (confirm("¿Eliminar esta deuda?")) { S.deleteDebt(debtId); closeSheet(); render(); }
-    });
+  function diaBadgeClase(tipo) {
+    const map = { intervals: "hard", tempo: "tempo", long: "long", easy: "easy",
+      gym: "gym", futbol: "futbol", test5k: "hard", descanso: "rest", movilidad: "rest" };
+    return map[tipo] || "rest";
   }
 
-  function paySheet(debtId) {
-    const s = S.get();
-    const d = s.debts.find((x) => x.id === debtId);
-    if (!d) return;
-    const accts = (s.accounts && s.accounts.length) ? s.accounts : ["Efectivo", "Cuenta bancaria"];
-    let selAcc = accts.includes("Cuenta bancaria") ? "Cuenta bancaria" : accts[0];
-    openSheet(`
-      <h2>Abono a ${esc(d.name)}</h2>
-      <p class="muted small" style="margin-top:-8px">Saldo actual: <b>${F.money(d.remaining)}</b></p>
-      <div class="field amount"><label>Monto del abono</label>
-        <input type="text" inputmode="numeric" id="pay-amt" value="${d.minPayment ? F.num(d.minPayment) : ""}" placeholder="$ 0" autofocus></div>
-      <div class="field"><label>¿Con qué pagaste?</label>
-        <div class="chips" id="pay-accs">
-          ${accts.map((a) => `<button class="chip ${selAcc === a ? "active" : ""}" data-acc="${esc(a)}">${accIcon(a)} ${esc(a)}</button>`).join("")}
+  function sessDetalleHTML(d) {
+    if (!d) return "";
+    return `<div class="sess">
+      <div class="main-detail">${esc(d.detalle)}</div>
+      ${d.calienta ? `<div class="srow"><span class="sk">Calentar</span><span class="sv">${esc(d.calienta)}</span></div>` : ""}
+      ${d.enfria ? `<div class="srow"><span class="sk">Enfriar</span><span class="sv">${esc(d.enfria)}</span></div>` : ""}
+      ${d.ritmo ? `<div class="srow"><span class="sk">Ritmo</span><span class="sv">${esc(d.ritmo)}</span></div>` : ""}
+      <div class="stip">💡 ${esc(d.tip)}</div>
+    </div>`;
+  }
+
+  // ======================================================================
+  //  PANTALLA: INICIO
+  // ======================================================================
+  function renderInicio() {
+    const p = Store.get().profile;
+    const h = Coach.hoy();
+    const ent = h.entreno;
+    const alertas = Coach.alertas().slice(0, 3);
+    const proj = Train.proyeccion(p);
+    const nombre = p.nombre ? `, ${esc(p.nombre)}` : "";
+    document.getElementById("header-sub").textContent = Fmt.fechaLarga(Fmt.hoy());
+
+    let html = `
+      <div class="hero">
+        <div class="label">Hola${nombre} · foco de hoy</div>
+        <div class="foco">${esc(Coach.foco())}</div>
+      </div>
+
+      <div class="section-title">Entreno de hoy</div>
+      <div class="card">
+        <div class="workout-hero">
+          <div class="wi">${ent.info.ico}</div>
+          <div style="flex:1;min-width:0">
+            <div class="wt">${esc(ent.info.label)}</div>
+            <div class="ws">${ent.detalle ? esc(ent.detalle.detalle) : (ent.extra ? esc(ent.extra) : "Día de recuperación")}</div>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn secondary sm" data-go="entreno">Ver semana</button>
+          <button class="btn primary sm" data-add="entreno">Registrar</button>
         </div>
       </div>
-      <div class="alert info" style="margin-bottom:14px"><div class="ico">✅</div><div class="a-text">No tienes que anotarlo aparte: esto <b>baja el saldo de la deuda</b> y se registra solo como gasto "Pago deuda".</div></div>
-      <button class="btn primary" id="pay-go">Registrar abono</button>
-    `);
-    overlay.querySelector("#pay-accs").addEventListener("click", (e) => {
-      const b = e.target.closest("[data-acc]"); if (!b) return;
-      overlay.querySelectorAll("#pay-accs .chip").forEach((c) => c.classList.remove("active"));
-      b.classList.add("active"); selAcc = b.dataset.acc;
-    });
-    overlay.querySelector("#pay-go").addEventListener("click", () => {
-      const amt = F.parseMoney(overlay.querySelector("#pay-amt").value);
-      if (amt <= 0) return;
-      S.payDebt(debtId, amt, selAcc);
-      closeSheet(); render();
-    });
+
+      <div class="section-title">Nutrición de hoy <span class="r" data-go="nutricion">Detalle ›</span></div>
+      <div class="card">
+        ${macroRing(h.nutricion)}
+        <div class="small muted" style="margin-top:12px">🍽️ ${esc(h.nutricion.objetivo.nota)}</div>
+        <div class="btn-row"><button class="btn primary sm" data-add="comida">＋ Registrar comida</button></div>
+      </div>
+
+      ${waterTracker(h.fecha)}`;
+
+    // Proyección reto
+    if (proj.hayDato) {
+      html += `
+      <div class="section-title">Reto: 5k en ${Fmt.tiempo(p.objetivoTiempoSeg)}</div>
+      <div class="progress-hero">
+        <div class="ph-label">Mejor 5k actual</div>
+        <div class="ph-big">${Fmt.tiempo(proj.actual)} <span class="muted" style="font-size:16px">· ${Fmt.ritmo(proj.actual/5)}</span></div>
+        <div class="ph-sub">${esc(proj.mensaje)}</div>
+        <div class="progress-track"><span style="width:${proj.progresoPct}%"></span></div>
+      </div>`;
+    }
+
+    if (alertas.length) {
+      html += `<div class="section-title">El coach dice</div>`;
+      alertas.forEach((a) => (html += alertaHTML(a)));
+      html += `<button class="btn ghost block mt8" data-go="coach">Ver todo el análisis del coach ›</button>`;
+    }
+
+    main.innerHTML = html;
   }
 
-  function changePwSheet() {
-    openSheet(`
-      <h2>Cambiar contraseña</h2>
-      <div class="field"><label>Contraseña actual</label>
-        <input type="password" id="cp-cur" inputmode="numeric" autocomplete="current-password" autofocus></div>
-      <div class="field"><label>Nueva contraseña</label>
-        <input type="password" id="cp-new" inputmode="numeric" autocomplete="new-password"></div>
-      <div class="field"><label>Repite la nueva</label>
-        <input type="password" id="cp-new2" inputmode="numeric" autocomplete="new-password"></div>
-      <div class="lock-error" id="cp-err" style="min-height:18px"></div>
-      <button class="btn primary" id="cp-go">Guardar</button>
-    `);
-    overlay.querySelector("#cp-go").addEventListener("click", async () => {
-      const cur = overlay.querySelector("#cp-cur").value;
-      const nw = overlay.querySelector("#cp-new").value;
-      const nw2 = overlay.querySelector("#cp-new2").value;
-      const err = overlay.querySelector("#cp-err");
-      if (nw !== nw2) { err.textContent = "Las contraseñas no coinciden."; return; }
-      const r = await window.Auth.changePassword(cur, nw);
-      if (!r.ok) { err.textContent = r.msg; return; }
-      closeSheet(); flash("Contraseña actualizada ✅");
-    });
-  }
+  // ======================================================================
+  //  PANTALLA: NUTRICIÓN
+  // ======================================================================
+  let nutTab = "hoy";
+  function renderNutricion() {
+    const p = Store.get().profile;
+    document.getElementById("header-sub").textContent = "Nutrición";
+    let html = `<div class="segmented">
+      <button data-nt="hoy" class="${nutTab==="hoy"?"active":""}">Hoy</button>
+      <button data-nt="plan" class="${nutTab==="plan"?"active":""}">Plan</button>
+      <button data-nt="consejos" class="${nutTab==="consejos"?"active":""}">Consejos</button>
+    </div>`;
 
-  function addUserSheet() {
-    openSheet(`
-      <h2>Agregar usuario</h2>
-      <p class="small muted" style="margin-top:-8px">El nuevo usuario tendrá sus propias finanzas, separadas de las tuyas.</p>
-      <div class="field"><label>Usuario</label>
-        <input type="text" id="su-user" autocapitalize="none" autocomplete="username" placeholder="Ej: Michelle"></div>
-      <div class="field"><label>Contraseña</label>
-        <input type="password" id="su-pw" inputmode="numeric" autocomplete="new-password"></div>
-      <div class="field"><label>Repite la contraseña</label>
-        <input type="password" id="su-pw2" inputmode="numeric" autocomplete="new-password"></div>
-      <div class="lock-error" id="su-err" style="min-height:18px"></div>
-      <button class="btn primary" id="su-go">Crear usuario 🔒</button>
-    `);
-    overlay.querySelector("#su-go").addEventListener("click", async () => {
-      const user = overlay.querySelector("#su-user").value.trim();
-      const pw = overlay.querySelector("#su-pw").value;
-      const pw2 = overlay.querySelector("#su-pw2").value;
-      const err = overlay.querySelector("#su-err");
-      if (pw !== pw2) { err.textContent = "Las contraseñas no coinciden."; return; }
-      const r = await window.Auth.createProfile(user, pw);
-      if (!r.ok) { err.textContent = r.msg; return; }
-      closeSheet(); flash(`Usuario "${user}" creado ✅`); render();
-    });
-  }
+    if (nutTab === "hoy") {
+      const dateStr = Fmt.ymd(Fmt.hoy());
+      const ent = Coach.entrenoHoy();
+      const nut = Nutri.resumenDia(dateStr, ent.tipo);
+      html += `<div class="card">${macroRing(nut)}
+        <div class="small muted" style="margin-top:12px">🍽️ ${esc(nut.objetivo.nota)}</div></div>`;
+      // comidas registradas agrupadas
+      const orden = ["desayuno", "almuerzo", "cena", "snack"];
+      const nombres = { desayuno: "🌅 Desayuno", almuerzo: "☀️ Almuerzo", cena: "🌙 Cena", snack: "🍎 Snacks" };
+      if (!nut.comidas.length) {
+        html += `<div class="empty"><div class="big-emoji">🥗</div>Aún no has registrado comidas hoy.<br>Toca <b>＋ Registrar comida</b>.</div>`;
+      } else {
+        orden.forEach((tipo) => {
+          const items = nut.comidas.filter((c) => c.comida === tipo);
+          if (!items.length) return;
+          const kcal = items.reduce((s, c) => s + c.kcal, 0);
+          html += `<div class="meal-group"><div class="meal-head"><span class="mh-name">${nombres[tipo]}</span><span class="mh-kcal">${Fmt.num(kcal)} kcal</span></div><div class="card tight">`;
+          items.forEach((c) => {
+            html += `<div class="list-item">
+              <div class="li-main"><div class="li-title">${esc(c.label)}</div>
+              <div class="li-sub">P ${Fmt.num(c.prot)} · C ${Fmt.num(c.carbs)} · G ${Fmt.num(c.grasa)} g</div></div>
+              <div class="li-right"><div class="li-amount">${Fmt.num(c.kcal)}</div></div>
+              <div class="li-del" data-delcomida="${c.id}">🗑</div>
+            </div>`;
+          });
+          html += `</div></div>`;
+        });
+      }
+      html += `<button class="btn primary block mt8" data-add="comida">＋ Registrar comida</button>`;
+      html += waterTracker(dateStr);
+    }
 
-  // ---------- Eventos globales (delegación) ----------
-  document.addEventListener("click", (e) => {
-    const t = e.target;
-    const nav = t.closest("[data-nav]"); if (nav) return navTo(nav.dataset.nav);
-    const goto = t.closest("[data-goto]"); if (goto) return navTo(goto.dataset.goto);
-    const quick = t.closest("[data-quick]"); if (quick) return txSheet(quick.dataset.quick);
-    if (t.closest("[data-adddebt]")) return debtSheet();
-    const ed = t.closest("[data-editdebt]"); if (ed) return debtSheet(ed.dataset.editdebt);
-    const pay = t.closest("[data-pay]"); if (pay) return paySheet(pay.dataset.pay);
-    const tx = t.closest("[data-tx]"); if (tx) { const o = S.get().transactions.find((x) => x.id === tx.dataset.tx); return txSheet(o.type, tx.dataset.tx); }
-    const debtCard = t.closest(".debt-card"); // no-op, uses buttons
+    if (nutTab === "plan") {
+      const m = Nutri.macros(p);
+      html += `<div class="card">
+        <div class="card-title"><span class="ico">🎯</span>Tus números (objetivo diario)</div>
+        <div class="card-sub">Calculados para tu meta: <b>${objetivoTxt(p.objetivo)}</b></div>
+        <div class="kpi-grid" style="margin-top:12px">
+          <div class="kpi"><div class="k">Calorías objetivo</div><div class="v accent">${Fmt.num(m.kcal)}</div><div class="vs">mantenimiento ${Fmt.num(m.mantenimiento)}</div></div>
+          <div class="kpi"><div class="k">Proteína</div><div class="v">${Fmt.num(m.prot)} g</div><div class="vs">${m.gPorKgProt} g/kg</div></div>
+          <div class="kpi"><div class="k">Carbohidratos</div><div class="v">${Fmt.num(m.carbs)} g</div><div class="vs">${Fmt.num(m.carbsKcal)} kcal</div></div>
+          <div class="kpi"><div class="k">Grasa</div><div class="v">${Fmt.num(m.grasa)} g</div><div class="vs">${Fmt.num(m.grasaKcal)} kcal</div></div>
+        </div>
+        <div class="small muted" style="margin-top:12px">Déficit ${Fmt.pct(m.deficitPct)} sobre tu mantenimiento. Meta de agua: ~${m.agua} vasos/día.</div>
+      </div>`;
 
-    if (t.closest("[data-savesettings]")) {
-      const p1 = +document.getElementById("set-pay1").value || 0;
-      const p2 = +document.getElementById("set-pay2").value || 0;
-      const paydays = [p1, p2].filter((d) => d >= 1 && d <= 31);
-      S.updateSettings({
-        paydays,
-        savings: F.parseMoney(document.getElementById("set-savingsbal").value),
-        savingsGoalPct: (+document.getElementById("set-savings").value || 10) / 100,
+      // plan ejemplo por carga
+      const carga = window._cargaPlan || "media";
+      const plan = Nutri.planEjemplo(p, carga);
+      html += `<div class="section-title">Día de comidas ejemplo</div>
+      <div class="segmented">
+        <button data-carga="baja" class="${carga==="baja"?"active":""}">Descanso</button>
+        <button data-carga="media" class="${carga==="media"?"active":""}">Suave</button>
+        <button data-carga="alta" class="${carga==="alta"?"active":""}">Día duro</button>
+      </div>
+      <div class="card">`;
+      plan.comidas.forEach((c) => {
+        html += `<div class="plan-meal"><div class="pm-top"><span class="pm-title">${esc(c.titulo)}</span><span class="pm-kcal">~${Fmt.num(c.kcal)} kcal</span></div>
+          <ul>${c.items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul></div>`;
       });
-      flash("Guardado ✅"); render(); return;
+      html += `<div class="small muted">Total aprox: <b>${Fmt.num(plan.totalKcal)} kcal</b>. Ajusta porciones para acercarte a tu objetivo. Es una guía, no una regla estricta.</div></div>`;
     }
-    const addacc = t.closest("[data-addacc]");
-    if (addacc) {
-      const name = prompt("Nombre de la cuenta o medio de pago (ej. Nequi, Ahorros, Tarjeta):");
-      if (name && name.trim()) { S.addAccount(name.trim()); render(); }
-      return;
-    }
-    const delacc = t.closest("[data-delacc]");
-    if (delacc) {
-      if (confirm(`¿Quitar "${delacc.dataset.delacc}" de tus cuentas? (No borra los movimientos)`)) {
-        S.removeAccount(delacc.dataset.delacc); render();
-      }
-      return;
-    }
-    if (t.closest("[data-changepw]")) return changePwSheet();
-    if (t.closest("[data-adduser]")) return addUserSheet();
-    const deluser = t.closest("[data-deluser]");
-    if (deluser) {
-      const uname = deluser.dataset.delusername || "ese usuario";
-      if (confirm(`¿Eliminar a "${uname}"? Se borrarán TODOS sus datos (movimientos, deudas, ahorro). Esto no se puede deshacer.`)) {
-        window.Auth.deleteProfile(deluser.dataset.deluser);
-        flash(`Usuario "${uname}" eliminado`); render();
-      }
-      return;
-    }
-    if (t.closest("[data-switchuser]")) {
-      if (confirm("¿Cambiar de usuario? Se cerrará esta sesión y volverá a la pantalla de acceso.")) {
-        window.Auth.lockNow();
-      }
-      return;
-    }
-    if (t.closest("[data-export]")) return doExport();
-    if (t.closest("[data-import]")) { document.getElementById("import-file").click(); return; }
-    if (t.closest("[data-reset]")) {
-      if (confirm("Esto borrará los datos de ESTE usuario (movimientos, deudas, ahorro). ¿Continuar?")) { S.reset(); navTo("inicio"); }
-      return;
-    }
-    if (t.closest("[data-hardreset]")) {
-      if (confirm("⚠️ Esto borrará TODO: todos los usuarios y sus datos. La app volverá a empezar de cero. ¿Seguro?")) {
-        if (confirm("Última confirmación: se borrará todo y no se puede deshacer.")) {
-          S.wipeAll();
-          location.reload();
-        }
-      }
-      return;
-    }
-  });
 
-  // input del abono extra (simulador) — recalcula al vuelo
-  document.addEventListener("input", (e) => {
-    if (e.target.id === "extra-input") {
-      window.__extra = F.parseMoney(e.target.value);
-      clearTimeout(window.__extraT);
-      window.__extraT = setTimeout(() => {
-        const pos = e.target.selectionStart;
-        render();
-        const inp = document.getElementById("extra-input");
-        if (inp) { inp.focus(); inp.setSelectionRange(pos, pos); }
-      }, 500);
+    if (nutTab === "consejos") {
+      html += `<div class="section-title">Guía del nutricionista</div>`;
+      Nutri.consejos(p).forEach((c) => (html += tipHTML(c)));
     }
-  });
 
-  // import file
-  document.addEventListener("change", (e) => {
-    if (e.target.id === "import-file" && e.target.files[0]) {
-      const reader = new FileReader();
-      reader.onload = () => {
-        if (S.importJSON(reader.result)) { flash("Datos importados ✅"); navTo("inicio"); }
-        else alert("Archivo inválido.");
-      };
-      reader.readAsText(e.target.files[0]);
+    main.innerHTML = html;
+  }
+
+  function objetivoTxt(o) {
+    return o === "definicion" ? "Definición (bajar grasa, quedar rayada)"
+      : o === "perder" ? "Bajar de peso" : "Mantener";
+  }
+
+  // ======================================================================
+  //  PANTALLA: ENTRENO
+  // ======================================================================
+  let entTab = "semana";
+  function renderEntreno() {
+    const p = Store.get().profile;
+    document.getElementById("header-sub").textContent = "Entrenamiento";
+    let html = `<div class="segmented">
+      <button data-et="semana" class="${entTab==="semana"?"active":""}">Semana</button>
+      <button data-et="ritmos" class="${entTab==="ritmos"?"active":""}">Ritmos</button>
+      <button data-et="consejos" class="${entTab==="consejos"?"active":""}">Consejos</button>
+    </div>`;
+
+    if (entTab === "semana") {
+      const f = Train.fase(p);
+      html += `<div class="card">
+        <div class="card-title"><span class="ico">📍</span>Fase: ${esc(f.nombre)}${f.semanas!=null?` · ${f.semanas} sem. al reto`:""}</div>
+        <div class="card-sub">${esc(f.desc)}</div>
+      </div>`;
+      const plan = Coach.semana();
+      const hoyIdx = Coach.idxHoy();
+      html += `<div class="week">`;
+      plan.forEach((d) => {
+        const esHoy = d.idx === hoyIdx;
+        const exp = expandidos.has(d.idx) || esHoy;
+        html += `<div class="day-row ${esHoy?"today":""}" data-day="${d.idx}">
+          <div class="dd"><div class="dn">${Fmt.DIAS[(d.idx+1)%7]}</div><div class="di">${d.info.ico}</div></div>
+          <div class="dmain"><div class="dtitle">${esc(d.info.label)}${esHoy?' · hoy':''}</div>
+          ${d.extra?`<div class="dtext">${esc(d.extra)}</div>`:(d.detalle?`<div class="dtext">${esc(d.detalle.detalle)}</div>`:"")}</div>
+          <div class="badge ${diaBadgeClase(d.tipo)}">${cargaLabel(d.tipo)}</div>
+        </div>`;
+        if (exp && d.detalle) html += sessDetalleHTML(d.detalle);
+      });
+      html += `</div>`;
+      html += `<div class="small muted center mt16">Tu plan se arma solo alrededor de tus días de gym y fútbol, respetando la recuperación. Cámbialos en ⚙️ Ajustes.</div>`;
+      html += `<button class="btn primary block mt16" data-add="entreno">＋ Registrar entrenamiento</button>`;
     }
-  });
 
-  function doExport() {
-    const blob = new Blob([S.exportJSON()], { type: "application/json" });
+    if (entTab === "ritmos") {
+      const z = Train.zonas(p);
+      html += `<div class="card">
+        <div class="card-title"><span class="ico">⏱️</span>Tus ritmos de entrenamiento</div>
+        <div class="card-sub">${p.mejor5kSeg?`Calculados desde tu 5k de ${Fmt.tiempo(p.mejor5kSeg)}.`:"Estimados. Haz un test de 5k para afinarlos."}</div>
+        <div style="margin-top:8px">
+          ${zonaHTML("Fácil / regenerativo", "Rodajes suaves, conversando", z.facil)}
+          ${zonaHTML("Tirada larga", "Base aeróbica, cómodo", z.larga)}
+          ${zonaHTML("Tempo / umbral", "Cómodamente duro (20–40 min)", z.tempo)}
+          ${zonaHTML("Intervalos (VO2máx)", "Repes de 400–1000 m", z.intervalos)}
+          ${zonaHTML("Velocidad", "Repes cortas 200–400 m", z.velocidad)}
+          <div class="zone goal"><div><div class="zn">🎯 Ritmo del reto</div><div class="zd">5k en ${Fmt.tiempo(p.objetivoTiempoSeg)}</div></div><div class="zv">${Fmt.ritmo(z.objetivo)}</div></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title"><span class="ico">📖</span>Cómo usarlos</div>
+        <div class="card-sub">El 80% de tus kilómetros deben ir en ritmo <b>Fácil</b>. Solo el 20% (intervalos + tempo) va duro. Correr lento la mayoría del tiempo es lo que te permite correr rápido el día de calidad y llegar al sub-20 sin lesionarte.</div>
+      </div>`;
+    }
+
+    if (entTab === "consejos") {
+      html += `<div class="section-title">Guía del entrenador</div>`;
+      Train.consejos(p).forEach((c) => (html += tipHTML(c)));
+    }
+
+    main.innerHTML = html;
+  }
+
+  function zonaHTML(nombre, desc, seg) {
+    return `<div class="zone"><div><div class="zn">${esc(nombre)}</div><div class="zd">${esc(desc)}</div></div><div class="zv">${Fmt.ritmo(seg)}</div></div>`;
+  }
+  function cargaLabel(tipo) {
+    const c = Train.cargaDelDia(tipo);
+    if (tipo === "descanso") return "descanso";
+    return c === "alta" ? "carga alta" : c === "media" ? "suave" : "ligero";
+  }
+
+  // ======================================================================
+  //  PANTALLA: PROGRESO
+  // ======================================================================
+  function renderProgreso() {
+    const p = Store.get().profile;
+    document.getElementById("header-sub").textContent = "Progreso";
+    const proj = Train.proyeccion(p);
+    let html = "";
+
+    // Reto sub-20
+    html += `<div class="progress-hero">
+      <div class="ph-label">Reto · 5k en ${Fmt.tiempo(p.objetivoTiempoSeg)}</div>`;
+    if (proj.hayDato) {
+      html += `<div class="ph-big">${Fmt.tiempo(proj.actual)}</div>
+        <div class="ph-sub">${esc(proj.mensaje)}${proj.tendencia?` · ${proj.tendencia.mejorando?"📉 mejorando":"📈 estable"}`:""}</div>
+        <div class="progress-track"><span style="width:${proj.progresoPct}%"></span></div>`;
+    } else {
+      html += `<div class="ph-big muted" style="font-size:18px">Sin datos</div><div class="ph-sub">${esc(proj.mensaje)}</div>`;
+    }
+    html += `<div class="btn-row"><button class="btn secondary sm" data-add="test">＋ Registrar test 5k</button></div></div>`;
+
+    // Gráfico de 5k
+    const tests = Store.tests5k();
+    if (tests.length) {
+      html += `<div class="section-title">Tus 5k</div><div class="card">
+        ${chartTiempos(tests, p.objetivoTiempoSeg)}
+        <div style="margin-top:10px">`;
+      tests.slice().reverse().forEach((t) => {
+        html += `<div class="list-item"><div class="li-main"><div class="li-title">${Fmt.tiempo(t.timeSeg)} <span class="muted" style="font-weight:400">· ${Fmt.ritmo(t.timeSeg/5)}</span></div>
+          <div class="li-sub">${Fmt.fecha(t.date)}</div></div>
+          <div class="li-del" data-delentreno="${t.id}">🗑</div></div>`;
+      });
+      html += `</div></div>`;
+    }
+
+    // Peso
+    const meds = Store.medicionesOrdenadas().filter((m) => m.pesoKg > 0);
+    html += `<div class="section-title">Peso <span class="r" data-add="peso">＋ Registrar</span></div>`;
+    if (meds.length) {
+      const ult = meds[meds.length - 1];
+      const prim = meds[0];
+      const delta = ult.pesoKg - prim.pesoKg;
+      html += `<div class="card">
+        <div class="kpi-grid three">
+          <div class="kpi"><div class="k">Actual</div><div class="v">${Fmt.num(ult.pesoKg,1)} kg</div></div>
+          <div class="kpi"><div class="k">Cambio</div><div class="v ${delta<=0?'good':'bad'}">${delta>0?'+':''}${Fmt.num(delta,1)} kg</div></div>
+          <div class="kpi"><div class="k">Registros</div><div class="v">${meds.length}</div></div>
+        </div>
+        ${meds.length>1?chartPeso(meds):""}
+      </div>`;
+    } else {
+      html += `<div class="empty"><div class="big-emoji">⚖️</div>Registra tu peso para ver tu progreso.</div>`;
+    }
+
+    // Medidas (cintura)
+    const conCintura = Store.medicionesOrdenadas().filter((m) => m.cintura > 0);
+    if (conCintura.length) {
+      const ult = conCintura[conCintura.length - 1];
+      const prim = conCintura[0];
+      html += `<div class="section-title">Cintura</div><div class="card">
+        <div class="kpi-grid">
+          <div class="kpi"><div class="k">Actual</div><div class="v">${Fmt.num(ult.cintura,1)} cm</div></div>
+          <div class="kpi"><div class="k">Cambio</div><div class="v ${ult.cintura-prim.cintura<=0?'good':'bad'}">${ult.cintura-prim.cintura>0?'+':''}${Fmt.num(ult.cintura-prim.cintura,1)} cm</div></div>
+        </div></div>`;
+    }
+
+    main.innerHTML = html;
+  }
+
+  // Gráfico de líneas simple (SVG) para tiempos de 5k (menor = mejor)
+  function chartTiempos(tests, objetivo) {
+    const pts = tests.map((t) => ({ x: t.date, y: t.timeSeg }));
+    const ys = pts.map((p) => p.y).concat([objetivo]);
+    let min = Math.min.apply(null, ys), max = Math.max.apply(null, ys);
+    if (max - min < 30) { max += 30; min -= 30; }
+    const W = 320, H = 140, pad = 24;
+    const n = pts.length;
+    const xAt = (i) => n <= 1 ? W / 2 : pad + (i * (W - 2 * pad)) / (n - 1);
+    const yAt = (v) => H - pad - ((v - min) / (max - min)) * (H - 2 * pad);
+    let line = "", dots = "";
+    pts.forEach((p, i) => {
+      const x = xAt(i), y = yAt(p.y);
+      line += (i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1) + " ";
+      dots += `<circle class="dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3.5"/>`;
+    });
+    const gy = yAt(objetivo);
+    return `<div class="chart-wrap"><svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+      <defs><linearGradient id="grad" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+      <line class="goal-line" x1="${pad}" y1="${gy.toFixed(1)}" x2="${W-pad}" y2="${gy.toFixed(1)}"/>
+      <text class="lbl" x="${W-pad}" y="${(gy-5).toFixed(1)}" text-anchor="end">meta ${Fmt.tiempo(objetivo)}</text>
+      <path class="line" d="${line}"/>${dots}
+    </svg></div>`;
+  }
+
+  // Gráfico de peso
+  function chartPeso(meds) {
+    const pts = meds.map((m) => m.pesoKg);
+    let min = Math.min.apply(null, pts), max = Math.max.apply(null, pts);
+    if (max - min < 2) { max += 1; min -= 1; }
+    const W = 320, H = 130, pad = 20;
+    const n = pts.length;
+    const xAt = (i) => n <= 1 ? W / 2 : pad + (i * (W - 2 * pad)) / (n - 1);
+    const yAt = (v) => H - pad - ((v - min) / (max - min)) * (H - 2 * pad);
+    let line = "", dots = "";
+    pts.forEach((v, i) => {
+      const x = xAt(i), y = yAt(v);
+      line += (i === 0 ? "M" : "L") + x.toFixed(1) + " " + y.toFixed(1) + " ";
+      dots += `<circle class="dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3"/>`;
+    });
+    return `<div class="chart-wrap" style="margin-top:8px"><svg class="chart" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet">
+      <path class="line" d="${line}"/>${dots}</svg></div>`;
+  }
+
+  // ======================================================================
+  //  PANTALLA: COACH (agente)
+  // ======================================================================
+  function renderCoach() {
+    const p = Store.get().profile;
+    document.getElementById("header-sub").textContent = "Tu coach";
+    const h = Coach.hoy();
+    const ent = h.entreno;
+    const alertas = Coach.alertas();
+    let html = `<div class="hero">
+      <div class="label">🤖 Tu coach · ${Fmt.fechaLarga(Fmt.hoy())}</div>
+      <div class="foco">${esc(Coach.foco())}</div>
+    </div>`;
+
+    // Qué hacer hoy — entreno
+    html += `<div class="section-title">1. Tu entrenamiento hoy</div><div class="card">
+      <div class="workout-hero"><div class="wi">${ent.info.ico}</div>
+      <div style="flex:1;min-width:0"><div class="wt">${esc(ent.info.label)}</div>
+      <div class="ws">${ent.detalle?esc(ent.detalle.detalle):(ent.extra?esc(ent.extra):"Descanso: recupera y duerme bien.")}</div></div></div>`;
+    if (ent.detalle) html += sessDetalleHTML(ent.detalle);
+    else if (ent.extra) html += `<div class="stip" style="margin-top:10px">💡 ${esc(ent.extra)}</div>`;
+    html += `<div class="btn-row"><button class="btn primary sm" data-add="entreno">Registrar entreno</button></div></div>`;
+
+    // Qué comer hoy
+    html += `<div class="section-title">2. Qué comer hoy <span class="r">${cargaTxt(h.carga)}</span></div>
+      <div class="card">${macroRing(h.nutricion)}
+      <div class="small muted" style="margin-top:10px">🍽️ ${esc(h.nutricion.objetivo.nota)}</div></div>`;
+    html += `<div class="card">`;
+    h.planComida.comidas.forEach((c) => {
+      html += `<div class="plan-meal"><div class="pm-top"><span class="pm-title">${esc(c.titulo)}</span><span class="pm-kcal">~${Fmt.num(c.kcal)} kcal</span></div>
+        <ul>${c.items.map((i) => `<li>${esc(i)}</li>`).join("")}</ul></div>`;
+    });
+    html += `<button class="btn primary block" data-add="comida">＋ Registrar comida</button></div>`;
+
+    // Hidratación
+    html += waterTracker(h.fecha);
+
+    // Análisis / alertas
+    html += `<div class="section-title">3. Análisis del día</div>`;
+    if (alertas.length) alertas.forEach((a) => (html += alertaHTML(a)));
+    else html += `<div class="alert good"><div class="ico">🎉</div><div><div class="a-title">Todo en orden</div><div class="a-text">Vas por buen camino. Sigue con tu plan de hoy.</div></div></div>`;
+
+    main.innerHTML = html;
+  }
+  function cargaTxt(c) { return c === "alta" ? "día de carga alta" : c === "media" ? "día suave" : "día de descanso"; }
+
+  // ======================================================================
+  //  SHEETS (formularios)
+  // ======================================================================
+  function sheetAgregar() {
+    openSheet(`<h2>¿Qué quieres registrar?</h2>
+      <button class="btn secondary block mb8" data-add="comida">🥗 Comida</button>
+      <button class="btn secondary block mb8" data-add="entreno">🏃‍♀️ Entrenamiento</button>
+      <button class="btn secondary block mb8" data-add="test">⏱️ Test de 5k</button>
+      <button class="btn secondary block" data-add="peso">⚖️ Peso y medidas</button>`);
+  }
+
+  function sheetComida(comidaTipo) {
+    const tipo = comidaTipo || sugerirComida();
+    openSheet(`<h2>Registrar comida</h2>
+      <div class="field"><label>Momento</label>
+        <div class="chips" id="comida-chips">
+          ${["desayuno","almuerzo","cena","snack"].map((t)=>`<div class="chip ${t===tipo?"active":""}" data-comida-tipo="${t}">${comidaNombre(t)}</div>`).join("")}
+        </div></div>
+      <div class="field"><label>Buscar alimento</label>
+        <input id="food-search" type="text" placeholder="Ej: pollo, arroz, avena..." autocomplete="off"></div>
+      <div class="food-results" id="food-results"></div>
+      <div class="divider"></div>
+      <div class="small muted mb8">O agrégalo manualmente:</div>
+      <div class="field"><label>Nombre</label><input id="c-label" type="text" placeholder="Mi comida"></div>
+      <div class="field-row">
+        <div class="field"><label>Calorías</label><input id="c-kcal" type="number" inputmode="numeric" placeholder="0"></div>
+        <div class="field"><label>Proteína (g)</label><input id="c-prot" type="number" inputmode="decimal" placeholder="0"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Carbos (g)</label><input id="c-carbs" type="number" inputmode="decimal" placeholder="0"></div>
+        <div class="field"><label>Grasa (g)</label><input id="c-grasa" type="number" inputmode="decimal" placeholder="0"></div>
+      </div>
+      <button class="btn primary block" id="c-save">Guardar comida</button>`);
+
+    let sel = tipo;
+    const chips = document.getElementById("comida-chips");
+    chips.addEventListener("click", (e) => {
+      const c = e.target.closest("[data-comida-tipo]"); if (!c) return;
+      sel = c.dataset.comidaTipo;
+      chips.querySelectorAll(".chip").forEach((x) => x.classList.toggle("active", x === c));
+    });
+
+    const results = document.getElementById("food-results");
+    const search = document.getElementById("food-search");
+    function pintaResultados(q) {
+      const lista = Nutri.buscarAlimentos(q).slice(0, 40);
+      results.innerHTML = lista.map((a, i) =>
+        `<div class="food-item" data-food="${i}">
+          <div><div class="fname">${esc(a.nombre)}</div><div class="fmacro">P ${Fmt.num(a.prot)} · C ${Fmt.num(a.carbs)} · G ${Fmt.num(a.grasa)} g</div></div>
+          <div class="fkcal">${Fmt.num(a.kcal)}</div></div>`).join("");
+      results._lista = lista;
+    }
+    pintaResultados("");
+    search.addEventListener("input", () => pintaResultados(search.value));
+    results.addEventListener("click", (e) => {
+      const it = e.target.closest("[data-food]"); if (!it) return;
+      const a = results._lista[+it.dataset.food];
+      Store.addComida({ comida: sel, label: a.nombre, kcal: a.kcal, prot: a.prot, carbs: a.carbs, grasa: a.grasa });
+      closeSheet(); render();
+    });
+    document.getElementById("c-save").addEventListener("click", () => {
+      const label = document.getElementById("c-label").value.trim();
+      const kcal = +document.getElementById("c-kcal").value || 0;
+      if (!label && !kcal) { closeSheet(); return; }
+      Store.addComida({
+        comida: sel, label: label || "Comida",
+        kcal, prot: +document.getElementById("c-prot").value || 0,
+        carbs: +document.getElementById("c-carbs").value || 0,
+        grasa: +document.getElementById("c-grasa").value || 0,
+      });
+      closeSheet(); render();
+    });
+  }
+  function comidaNombre(t) { return { desayuno: "Desayuno", almuerzo: "Almuerzo", cena: "Cena", snack: "Snack" }[t]; }
+  function sugerirComida() {
+    const h = new Date().getHours();
+    if (h < 11) return "desayuno";
+    if (h < 15) return "almuerzo";
+    if (h < 20) return "cena";
+    return "snack";
+  }
+
+  function sheetEntreno() {
+    const sugerido = Coach.entrenoHoy().tipo;
+    const tipos = [
+      ["easy", "Rodaje suave"], ["intervals", "Intervalos"], ["tempo", "Tempo"],
+      ["long", "Tirada larga"], ["gym", "Gimnasio"], ["futbol", "Fútbol"], ["movilidad", "Movilidad"],
+    ];
+    openSheet(`<h2>Registrar entrenamiento</h2>
+      <div class="field"><label>Tipo</label>
+        <div class="chips" id="ent-chips">
+          ${tipos.map(([v,l])=>`<div class="chip ${v===sugerido&&["easy","intervals","tempo","long","gym","futbol","movilidad"].includes(sugerido)?"active":""}" data-ent-tipo="${v}">${l}</div>`).join("")}
+        </div></div>
+      <div class="field-row">
+        <div class="field"><label>Duración (min)</label><input id="e-min" type="number" inputmode="numeric" placeholder="0"></div>
+        <div class="field"><label>Distancia (km)</label><input id="e-km" type="number" inputmode="decimal" placeholder="0"></div>
+      </div>
+      <div class="field"><label>Esfuerzo (RPE 1–10)</label><input id="e-rpe" type="number" inputmode="numeric" placeholder="opcional" min="0" max="10"></div>
+      <div class="field"><label>Nota</label><input id="e-nota" type="text" placeholder="¿Cómo te sentiste?"></div>
+      <button class="btn primary block" id="e-save">Guardar</button>`);
+    let sel = ["easy","intervals","tempo","long","gym","futbol","movilidad"].includes(sugerido) ? sugerido : "easy";
+    const chips = document.getElementById("ent-chips");
+    chips.addEventListener("click", (e) => {
+      const c = e.target.closest("[data-ent-tipo]"); if (!c) return;
+      sel = c.dataset.entTipo;
+      chips.querySelectorAll(".chip").forEach((x) => x.classList.toggle("active", x === c));
+    });
+    document.getElementById("e-save").addEventListener("click", () => {
+      Store.addEntreno({
+        tipo: sel, minutos: +document.getElementById("e-min").value || 0,
+        km: +document.getElementById("e-km").value || 0,
+        rpe: +document.getElementById("e-rpe").value || 0,
+        nota: document.getElementById("e-nota").value.trim(),
+      });
+      closeSheet(); render();
+    });
+  }
+
+  function sheetTest5k() {
+    openSheet(`<h2>⏱️ Test de 5 km</h2>
+      <div class="small muted mb8">Corre 5 km a tope y registra tu tiempo. Con esto calculo tus ritmos y proyecto tu avance hacia el sub-20.</div>
+      <div class="field amount"><label>Tiempo (mm:ss)</label><input id="t-time" type="text" inputmode="numeric" placeholder="22:30"></div>
+      <div class="field"><label>Fecha</label><input id="t-date" type="date" value="${Fmt.ymd(Fmt.hoy())}"></div>
+      <div class="field"><label>Nota</label><input id="t-nota" type="text" placeholder="opcional"></div>
+      <button class="btn primary block" id="t-save">Guardar test</button>`);
+    document.getElementById("t-save").addEventListener("click", () => {
+      const seg = Fmt.parseTiempo(document.getElementById("t-time").value);
+      if (!seg) { alert("Ingresa un tiempo válido, ej: 22:30"); return; }
+      Store.addEntreno({ tipo: "test5k", titulo: "Test 5k", km: 5, timeSeg: seg,
+        date: document.getElementById("t-date").value || Fmt.ymd(Fmt.hoy()),
+        nota: document.getElementById("t-nota").value.trim() });
+      closeSheet(); render();
+    });
+  }
+
+  function sheetPeso() {
+    const p = Store.get().profile;
+    openSheet(`<h2>⚖️ Peso y medidas</h2>
+      <div class="field amount"><label>Peso (kg)</label><input id="m-peso" type="number" inputmode="decimal" placeholder="${p.pesoKg||''}"></div>
+      <div class="field-row">
+        <div class="field"><label>Cintura (cm)</label><input id="m-cintura" type="number" inputmode="decimal" placeholder="opcional"></div>
+        <div class="field"><label>Cadera (cm)</label><input id="m-cadera" type="number" inputmode="decimal" placeholder="opcional"></div>
+      </div>
+      <div class="field"><label>% Grasa (si lo sabes)</label><input id="m-grasa" type="number" inputmode="decimal" placeholder="opcional"></div>
+      <div class="field"><label>Fecha</label><input id="m-date" type="date" value="${Fmt.ymd(Fmt.hoy())}"></div>
+      <button class="btn primary block" id="m-save">Guardar</button>`);
+    document.getElementById("m-save").addEventListener("click", () => {
+      const peso = +document.getElementById("m-peso").value || 0;
+      const cintura = +document.getElementById("m-cintura").value || 0;
+      if (!peso && !cintura) { closeSheet(); return; }
+      Store.addMedicion({
+        pesoKg: peso, cintura,
+        cadera: +document.getElementById("m-cadera").value || 0,
+        grasaPct: +document.getElementById("m-grasa").value || 0,
+        date: document.getElementById("m-date").value || Fmt.ymd(Fmt.hoy()),
+      });
+      closeSheet(); render();
+    });
+  }
+
+  function sheetAjustes() {
+    const p = Store.get().profile;
+    const diasHTML = (sel, campo) => `<div class="day-toggles" data-days="${campo}">
+      ${["L","M","M","J","V","S","D"].map((d,i)=>`<div class="dt ${sel.includes(i)?"active":""}" data-di="${i}">${d}</div>`).join("")}</div>`;
+    openSheet(`<h2>⚙️ Ajustes</h2>
+      <div class="field"><label>Nombre</label><input id="s-nombre" type="text" value="${esc(p.nombre)}" placeholder="Tu nombre"></div>
+      <div class="field-row">
+        <div class="field"><label>Sexo</label><select id="s-sexo"><option value="F" ${p.sexo==="F"?"selected":""}>Femenino</option><option value="M" ${p.sexo==="M"?"selected":""}>Masculino</option></select></div>
+        <div class="field"><label>Edad</label><input id="s-edad" type="number" inputmode="numeric" value="${p.edad}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Altura (cm)</label><input id="s-altura" type="number" inputmode="numeric" value="${p.alturaCm}"></div>
+        <div class="field"><label>Peso (kg)</label><input id="s-peso" type="number" inputmode="decimal" value="${p.pesoKg}"></div>
+      </div>
+      <div class="field"><label>Objetivo</label><select id="s-obj">
+        <option value="definicion" ${p.objetivo==="definicion"?"selected":""}>Definición (bajar grasa, quedar rayada)</option>
+        <option value="perder" ${p.objetivo==="perder"?"selected":""}>Bajar de peso</option>
+        <option value="mantener" ${p.objetivo==="mantener"?"selected":""}>Mantener</option>
+      </select></div>
+      <div class="field"><label>Nivel de actividad</label><select id="s-act">
+        ${actOptions(p.nivelActividad)}
+      </select></div>
+      <div class="divider"></div>
+      <div class="section-title" style="margin-top:0">Tu semana</div>
+      <div class="field"><label>Días de gimnasio</label>${diasHTML(p.diasGym,"gym")}</div>
+      <div class="field"><label>Días de fútbol</label>${diasHTML(p.diasFutbol,"futbol")}</div>
+      <div class="field"><label>Días de descanso total</label>${diasHTML(p.diasDescanso,"descanso")}</div>
+      <div class="divider"></div>
+      <div class="section-title" style="margin-top:0">El reto</div>
+      <div class="field-row">
+        <div class="field"><label>Meta 5k (mm:ss)</label><input id="s-reto" type="text" inputmode="numeric" value="${Fmt.tiempo(p.objetivoTiempoSeg)}"></div>
+        <div class="field"><label>Fecha meta</label><input id="s-fecha" type="date" value="${esc(p.fechaReto)}"></div>
+      </div>
+      <button class="btn primary block" id="s-save">Guardar</button>
+      <div class="divider"></div>
+      <div class="btn-row">
+        <button class="btn secondary sm" id="s-export">Exportar copia</button>
+        <button class="btn secondary sm" id="s-import">Importar</button>
+      </div>
+      <button class="btn danger block mt8" id="s-reset">Borrar todos mis datos</button>
+      <div class="small muted center mt16">Rayada · 100% privada. Todo se guarda solo en tu teléfono.</div>`);
+
+    // toggles de días
+    const seleccion = { gym: new Set(p.diasGym), futbol: new Set(p.diasFutbol), descanso: new Set(p.diasDescanso) };
+    overlay.querySelectorAll("[data-days]").forEach((grp) => {
+      const campo = grp.dataset.days;
+      grp.addEventListener("click", (e) => {
+        const dt = e.target.closest("[data-di]"); if (!dt) return;
+        const i = +dt.dataset.di;
+        if (seleccion[campo].has(i)) seleccion[campo].delete(i); else seleccion[campo].add(i);
+        dt.classList.toggle("active");
+      });
+    });
+
+    document.getElementById("s-save").addEventListener("click", () => {
+      Store.updateProfile({
+        nombre: document.getElementById("s-nombre").value.trim(),
+        sexo: document.getElementById("s-sexo").value,
+        edad: +document.getElementById("s-edad").value || p.edad,
+        alturaCm: +document.getElementById("s-altura").value || p.alturaCm,
+        pesoKg: +document.getElementById("s-peso").value || p.pesoKg,
+        objetivo: document.getElementById("s-obj").value,
+        nivelActividad: document.getElementById("s-act").value,
+        diasGym: [...seleccion.gym].sort(), diasFutbol: [...seleccion.futbol].sort(),
+        diasDescanso: [...seleccion.descanso].sort(),
+        objetivoTiempoSeg: Fmt.parseTiempo(document.getElementById("s-reto").value) || p.objetivoTiempoSeg,
+        fechaReto: document.getElementById("s-fecha").value,
+      });
+      closeSheet(); render();
+    });
+    document.getElementById("s-export").addEventListener("click", exportarDatos);
+    document.getElementById("s-import").addEventListener("click", importarDatos);
+    document.getElementById("s-reset").addEventListener("click", () => {
+      if (confirm("¿Seguro? Se borrará tu perfil, comidas, entrenos y progreso de este dispositivo.")) {
+        Store.reset(); closeSheet(); location.reload();
+      }
+    });
+  }
+  function actOptions(sel) {
+    const opts = [["sedentario","Sedentaria (poco movimiento)"],["ligero","Ligera (1–2 entrenos/sem)"],
+      ["moderado","Moderada (3–4/sem)"],["alto","Alta (5–6/sem: corres + gym + fútbol)"],["atleta","Atleta (2/día)"]];
+    return opts.map(([v,l])=>`<option value="${v}" ${v===sel?"selected":""}>${l}</option>`).join("");
+  }
+
+  function exportarDatos() {
+    const blob = new Blob([Store.exportJSON()], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url; a.download = `finanzas-${F.ymd(F.hoy())}.json`;
-    a.click(); URL.revokeObjectURL(url);
+    a.href = url; a.download = `rayada-${Fmt.ymd(Fmt.hoy())}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function importarDatos() {
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = "application/json";
+    input.addEventListener("change", () => {
+      const file = input.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (Store.importJSON(reader.result)) { closeSheet(); location.reload(); }
+        else alert("Archivo inválido.");
+      };
+      reader.readAsText(file);
+    });
+    input.click();
   }
 
-  function flash(msg) {
-    const f = el(`<div style="position:fixed;bottom:calc(96px + var(--safe-bottom));left:50%;transform:translateX(-50%);background:var(--card);border:1px solid var(--border);color:var(--text);padding:12px 18px;border-radius:12px;z-index:60;box-shadow:var(--shadow);font-weight:600">${esc(msg)}</div>`);
-    document.body.appendChild(f);
-    setTimeout(() => f.remove(), 1800);
+  // ======================================================================
+  //  ONBOARDING
+  // ======================================================================
+  const onb = { paso: 0, datos: {} };
+  const PASOS = 6;
+  function renderOnboarding() {
+    onbRoot.style.display = "block";
+    document.getElementById("app").style.display = "none";
+    document.getElementById("fab").style.display = "none";
+    pintaPaso();
+  }
+  function terminarOnboarding() {
+    onbRoot.style.display = "none";
+    onbRoot.innerHTML = "";
+    document.getElementById("app").style.display = "";
+    document.getElementById("fab").style.display = "";
+    irA("inicio");
+  }
+  function dots(activo) {
+    let s = `<div class="progress-dots">`;
+    for (let i = 0; i < PASOS; i++) s += `<div class="pd ${i<=activo?"on":""}"></div>`;
+    return s + `</div>`;
+  }
+  function pintaPaso() {
+    const d = onb.datos;
+    let cuerpo = "", titulo = "";
+    if (onb.paso === 0) {
+      onbRoot.innerHTML = `<div class="onb-wrap">
+        <div class="onb-spacer"></div>
+        <div class="onb-logo"><div class="em">🏃‍♀️💚</div></div>
+        <div class="onb-title">Rayada</div>
+        <div class="onb-sub">Tu coach de nutrición y running. Vas a definir tu cuerpo, bajar grasa y correr 5k en 20 minutos. Con un experto en nutrición y uno en running de tu lado.</div>
+        <div class="card"><div class="small">Te haré unas preguntas rápidas para armar tu plan. Todo se guarda solo en tu teléfono. 🔒</div></div>
+        <button class="btn primary block" id="onb-start">Empezar</button>
+        <div class="onb-spacer"></div>`;
+      document.getElementById("onb-start").onclick = () => { onb.paso = 1; pintaPaso(); };
+      return;
+    }
+    if (onb.paso === 1) {
+      titulo = "Cuéntame de ti";
+      cuerpo = `<div class="field"><label>¿Cómo te llamas?</label><input id="o-nombre" type="text" value="${esc(d.nombre||'')}" placeholder="Tu nombre"></div>
+        <div class="field-row">
+          <div class="field"><label>Sexo</label><select id="o-sexo"><option value="F" ${d.sexo!=="M"?"selected":""}>Femenino</option><option value="M" ${d.sexo==="M"?"selected":""}>Masculino</option></select></div>
+          <div class="field"><label>Edad</label><input id="o-edad" type="number" inputmode="numeric" value="${d.edad||28}"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Altura (cm)</label><input id="o-altura" type="number" inputmode="numeric" value="${d.alturaCm||165}"></div>
+          <div class="field"><label>Peso (kg)</label><input id="o-peso" type="number" inputmode="decimal" value="${d.pesoKg||62}"></div>
+        </div>`;
+    }
+    if (onb.paso === 2) {
+      titulo = "¿Cuál es tu objetivo?";
+      const o = d.objetivo || "definicion";
+      cuerpo = `<div class="chips" id="o-obj-chips" style="flex-direction:column">
+        ${objChip("definicion","💪 Definición","Bajar grasa y quedar rayada, sin perder músculo",o)}
+        ${objChip("perder","⚖️ Bajar de peso","Perder peso priorizando la grasa",o)}
+        ${objChip("mantener","🎯 Mantener","Rendimiento y composición actual",o)}
+      </div>`;
+    }
+    if (onb.paso === 3) {
+      titulo = "¿Qué tan activa eres?";
+      const a = d.nivelActividad || "alto";
+      cuerpo = `<div class="chips" id="o-act-chips" style="flex-direction:column">
+        ${objChip("moderado","Moderada","3–4 entrenos por semana",a)}
+        ${objChip("alto","Alta","5–6/sem: corres + gym + fútbol",a)}
+        ${objChip("atleta","Muy alta","Casi todos los días, a veces 2/día",a)}
+        ${objChip("ligero","Ligera","1–2 entrenos por semana",a)}
+      </div>`;
+    }
+    if (onb.paso === 4) {
+      titulo = "Tu semana";
+      const dd = (sel, campo) => `<div class="day-toggles" data-odays="${campo}">
+        ${["L","M","M","J","V","S","D"].map((x,i)=>`<div class="dt ${(sel||[]).includes(i)?"active":""}" data-di="${i}">${x}</div>`).join("")}</div>`;
+      cuerpo = `<div class="small muted mb8">Marca los días que ya tienes fijos. Yo armo el running alrededor, respetando tu recuperación.</div>
+        <div class="field"><label>🏋️‍♀️ Días de gimnasio</label>${dd(d.diasGym||[0,4],"gym")}</div>
+        <div class="field"><label>⚽ Días de fútbol</label>${dd(d.diasFutbol||[2],"futbol")}</div>
+        <div class="field"><label>😴 Descanso total</label>${dd(d.diasDescanso||[6],"descanso")}</div>`;
+    }
+    if (onb.paso === 5) {
+      titulo = "Tu reto de running";
+      cuerpo = `<div class="field-row">
+          <div class="field"><label>Meta de 5k</label><input id="o-reto" type="text" inputmode="numeric" value="${d.reto||'20:00'}"></div>
+          <div class="field"><label>Fecha meta (opcional)</label><input id="o-fecha" type="date" value="${d.fechaReto||''}"></div>
+        </div>
+        <div class="field"><label>Tu 5k actual (opcional, mm:ss)</label><input id="o-5k" type="text" inputmode="numeric" value="${d.mejor5k||''}" placeholder="Ej: 24:30"></div>
+        <div class="card"><div class="small muted">Si no sabes tu 5k actual, no pasa nada: haz un test más adelante desde la app y afino tus ritmos.</div></div>`;
+    }
+
+    onbRoot.innerHTML = `<div class="onb-wrap">
+      ${dots(onb.paso-1)}
+      <div class="onb-step-label">Paso ${onb.paso} de ${PASOS-1}</div>
+      <div class="onb-q">${titulo}</div>
+      ${cuerpo}
+      <div class="onb-spacer"></div>
+      <div class="btn-row">
+        ${onb.paso>1?`<button class="btn secondary sm" id="onb-back">Atrás</button>`:""}
+        <button class="btn primary sm" id="onb-next">${onb.paso===PASOS-1?"¡Crear mi plan!":"Siguiente"}</button>
+      </div>
+    </div>`;
+
+    // handlers de chips de objetivo/actividad
+    ["o-obj-chips","o-act-chips"].forEach((id) => {
+      const grp = document.getElementById(id); if (!grp) return;
+      grp.addEventListener("click", (e) => {
+        const c = e.target.closest("[data-val]"); if (!c) return;
+        grp.querySelectorAll(".chip").forEach((x) => x.classList.toggle("active", x === c));
+        grp._val = c.dataset.val;
+      });
+    });
+    // toggles de días onboarding
+    const oseleccion = {
+      gym: new Set(d.diasGym || [0,4]), futbol: new Set(d.diasFutbol || [2]), descanso: new Set(d.diasDescanso || [6]),
+    };
+    onbRoot.querySelectorAll("[data-odays]").forEach((grp) => {
+      const campo = grp.dataset.odays;
+      grp.addEventListener("click", (e) => {
+        const dt = e.target.closest("[data-di]"); if (!dt) return;
+        const i = +dt.dataset.di;
+        if (oseleccion[campo].has(i)) oseleccion[campo].delete(i); else oseleccion[campo].add(i);
+        dt.classList.toggle("active");
+      });
+    });
+
+    const back = document.getElementById("onb-back");
+    if (back) back.onclick = () => { guardarPaso(oseleccion); onb.paso--; pintaPaso(); };
+    document.getElementById("onb-next").onclick = () => {
+      guardarPaso(oseleccion);
+      if (onb.paso < PASOS - 1) { onb.paso++; pintaPaso(); }
+      else finalizar();
+    };
+  }
+  function objChip(val, titulo, desc, actual) {
+    return `<div class="chip ${val===actual?"active":""}" data-val="${val}" style="width:100%;text-align:left;padding:14px">
+      <div style="font-weight:700">${titulo}</div><div class="small muted" style="margin-top:2px">${desc}</div></div>`;
+  }
+  function guardarPaso(oseleccion) {
+    const d = onb.datos, g = (id) => document.getElementById(id);
+    if (onb.paso === 1) {
+      if (g("o-nombre")) d.nombre = g("o-nombre").value.trim();
+      if (g("o-sexo")) d.sexo = g("o-sexo").value;
+      if (g("o-edad")) d.edad = +g("o-edad").value || 28;
+      if (g("o-altura")) d.alturaCm = +g("o-altura").value || 165;
+      if (g("o-peso")) d.pesoKg = +g("o-peso").value || 62;
+    }
+    if (onb.paso === 2) { const c = document.getElementById("o-obj-chips"); if (c && c._val) d.objetivo = c._val; else d.objetivo = d.objetivo || "definicion"; }
+    if (onb.paso === 3) { const c = document.getElementById("o-act-chips"); if (c && c._val) d.nivelActividad = c._val; else d.nivelActividad = d.nivelActividad || "alto"; }
+    if (onb.paso === 4 && oseleccion) {
+      d.diasGym = [...oseleccion.gym].sort(); d.diasFutbol = [...oseleccion.futbol].sort(); d.diasDescanso = [...oseleccion.descanso].sort();
+    }
+    if (onb.paso === 5) {
+      if (g("o-reto")) d.reto = g("o-reto").value;
+      if (g("o-fecha")) d.fechaReto = g("o-fecha").value;
+      if (g("o-5k")) d.mejor5k = g("o-5k").value;
+    }
+  }
+  function finalizar() {
+    const d = onb.datos;
+    Store.updateProfile({
+      nombre: d.nombre || "", sexo: d.sexo || "F", edad: d.edad || 28,
+      alturaCm: d.alturaCm || 165, pesoKg: d.pesoKg || 62,
+      objetivo: d.objetivo || "definicion", nivelActividad: d.nivelActividad || "alto",
+      diasGym: d.diasGym || [0,4], diasFutbol: d.diasFutbol || [2], diasDescanso: d.diasDescanso || [6],
+      objetivoTiempoSeg: Fmt.parseTiempo(d.reto || "20:00") || 1200,
+      fechaReto: d.fechaReto || "",
+    });
+    // registra 5k inicial y peso inicial si los dio
+    const seg5k = Fmt.parseTiempo(d.mejor5k || "");
+    if (seg5k) Store.addEntreno({ tipo: "test5k", titulo: "Test inicial", km: 5, timeSeg: seg5k });
+    if (d.pesoKg) Store.addMedicion({ pesoKg: d.pesoKg });
+    Store.setOnboarded(true);
+    terminarOnboarding();
   }
 
-  // FAB
-  document.getElementById("fab").addEventListener("click", () => {
-    if (current === "deudas") debtSheet(); else txSheet("expense");
+  // ======================================================================
+  //  DELEGACIÓN GLOBAL DE CLICKS (data-*)
+  // ======================================================================
+  document.addEventListener("click", (e) => {
+    const go = e.target.closest("[data-go]");
+    if (go) { irA(go.dataset.go); return; }
+    const add = e.target.closest("[data-add]");
+    if (add) {
+      const tipo = add.dataset.add;
+      if (tipo === "comida") sheetComida();
+      else if (tipo === "entreno") sheetEntreno();
+      else if (tipo === "test") sheetTest5k();
+      else if (tipo === "peso") sheetPeso();
+      return;
+    }
+    const nt = e.target.closest("[data-nt]"); if (nt) { nutTab = nt.dataset.nt; render(); return; }
+    const et = e.target.closest("[data-et]"); if (et) { entTab = et.dataset.et; render(); return; }
+    const carga = e.target.closest("[data-carga]"); if (carga) { window._cargaPlan = carga.dataset.carga; render(); return; }
+    const day = e.target.closest("[data-day]");
+    if (day) {
+      const i = +day.dataset.day;
+      if (expandidos.has(i)) expandidos.delete(i); else expandidos.add(i);
+      render(); return;
+    }
+    const w = e.target.closest("[data-water]");
+    if (w) {
+      const n = +w.dataset.water;
+      const dateStr = Fmt.ymd(Fmt.hoy());
+      const actual = Store.getAgua(dateStr);
+      Store.setAgua(dateStr, n === actual ? n - 1 : n); // tocar el vaso lleno lo baja
+      render(); return;
+    }
+    const dc = e.target.closest("[data-delcomida]");
+    if (dc) { Store.deleteComida(dc.dataset.delcomida); render(); return; }
+    const de = e.target.closest("[data-delentreno]");
+    if (de) { if (confirm("¿Borrar este registro?")) { Store.deleteEntreno(de.dataset.delentreno); render(); } return; }
   });
 
-  // reaccionar a cambios de datos desde otras pestañas
-  window.addEventListener("store:changed", () => {}); // el render se hace manualmente tras cada acción
-
-  // ---------- Init ----------
-  function boot() {
-    navTo("inicio");
+  // ======================================================================
+  //  RENDER PRINCIPAL
+  // ======================================================================
+  function render() {
+    switch (navActual) {
+      case "inicio": return renderInicio();
+      case "nutricion": return renderNutricion();
+      case "entreno": return renderEntreno();
+      case "progreso": return renderProgreso();
+      case "coach": return renderCoach();
+    }
   }
 
-  // registrar service worker (offline) + auto-actualización
+  // ---------- arranque ----------
+  Store.load();
+  if (!Store.get().profile.onboarded) renderOnboarding();
+  else render();
+
+  // Service worker
   if ("serviceWorker" in navigator) {
-    const hadController = !!navigator.serviceWorker.controller;
-    let reloading = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (hadController && !reloading) { reloading = true; location.reload(); }
-    });
-    window.addEventListener("load", () => {
-      navigator.serviceWorker.register("./sw.js", { updateViaCache: "none" })
-        .then((reg) => {
-          reg.update();
-          reg.addEventListener("updatefound", () => {
-            const nw = reg.installing;
-            nw && nw.addEventListener("statechange", () => {
-              if (nw.state === "installed" && navigator.serviceWorker.controller) {
-                nw.postMessage("skipWaiting");
-              }
-            });
-          });
-        })
-        .catch(() => {});
-    });
+    window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
   }
-
-  // Arranque con candado (usuario/contraseña) si está disponible
-  if (window.Auth) window.Auth.guard(boot); else boot();
 })();

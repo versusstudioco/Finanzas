@@ -31,9 +31,25 @@ function sdSegment(px, py, ax, ay, bx, by) {
   return Math.sqrt(dx * dx + dy * dy);
 }
 
-const BG1 = [23, 52, 42], BG2 = [18, 42, 58];
-const BAR_LO = [23, 166, 115], BAR_HI = [34, 201, 138];
-const ARROW = [232, 255, 245];
+const BG1 = [16, 53, 40], BG2 = [18, 48, 58];
+const RUNNER = [234, 252, 241];
+const LIME = [182, 242, 74];
+
+// segmentos del cuerpo de la corredora (mismos que icon.svg)
+const RUN_SEG = [
+  [258, 190, 240, 262], // torso
+  [240, 262, 308, 280], // muslo delantero
+  [308, 280, 336, 348], // pierna delantera
+  [240, 262, 198, 316], // muslo trasero
+  [198, 316, 252, 356], // pierna trasera
+  [252, 198, 322, 216], // brazo delantero
+  [258, 208, 192, 236], // brazo trasero
+];
+const SPEED_SEG = [
+  [70, 205, 150, 205],
+  [60, 255, 170, 255],
+  [80, 305, 150, 305],
+];
 
 function renderPixel(x, y, N, maskable) {
   // escala a espacio 512
@@ -52,36 +68,25 @@ function renderPixel(x, y, N, maskable) {
     if (alpha <= 0) return [0, 0, 0, 0];
   }
 
-  // barras: [x, y, w, h]
-  const bars = [
-    [118, 300, 54, 94],
-    [200, 240, 54, 154],
-    [282, 176, 54, 218],
-  ];
-  for (let i = 0; i < bars.length; i++) {
-    const [bx, by, bw, bh] = bars[i];
-    const d = sdRoundRect(px, py, bx + bw / 2, by + bh / 2, bw / 2, bh / 2, 16);
-    const cov = 1 - smoothstep(-1.2, 1.2, d);
-    if (cov > 0) {
-      const t = clamp01((py - by) / bh); // 0 arriba, 1 abajo
-      const barCol = mix(BAR_HI, BAR_LO, t);
-      col = mix(col, barCol, cov * (i === 2 ? 1 : 0.9));
-    }
+  // líneas de velocidad (lime)
+  for (let i = 0; i < SPEED_SEG.length; i++) {
+    const [ax, ay, bx, by] = SPEED_SEG[i];
+    const d = sdSegment(px, py, ax, ay, bx, by);
+    const cov = 1 - smoothstep(7, 9, d);
+    if (cov > 0) col = mix(col, LIME, cov);
   }
 
-  // línea/flecha de crecimiento (polilínea)
-  const pts = [[132, 250], [232, 190], [300, 214], [388, 132]];
-  let lineD = 1e9;
-  for (let i = 0; i < pts.length - 1; i++) {
-    lineD = Math.min(lineD, sdSegment(px, py, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]));
+  // cuerpo de la corredora (blanco), trazo grueso con puntas redondeadas
+  let bodyD = 1e9;
+  for (let i = 0; i < RUN_SEG.length; i++) {
+    const [ax, ay, bx, by] = RUN_SEG[i];
+    bodyD = Math.min(bodyD, sdSegment(px, py, ax, ay, bx, by));
   }
-  const lineCov = 1 - smoothstep(9, 11.5, lineD);
-  if (lineCov > 0) col = mix(col, ARROW, lineCov);
-
-  // punta de flecha (triángulo relleno) aprox con círculo en el vértice
-  const headD = sdSegment(px, py, 370, 125, 388, 132);
-  const headCov = 1 - smoothstep(14, 17, Math.min(headD, Math.hypot(px - 384, py - 128)));
-  if (headCov > 0) col = mix(col, ARROW, headCov * 0.9);
+  // cabeza
+  const headD = Math.hypot(px - 266, py - 150) - 33;
+  bodyD = Math.min(bodyD, headD + 15); // el círculo se suma al trazo de radio 15
+  const bodyCov = 1 - smoothstep(14, 16.5, bodyD);
+  if (bodyCov > 0) col = mix(col, RUNNER, bodyCov);
 
   return [Math.round(col[0]), Math.round(col[1]), Math.round(col[2]), Math.round(alpha * 255)];
 }
