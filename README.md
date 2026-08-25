@@ -20,13 +20,16 @@ App personal para llevar tu **nutrición** y tus **avances en running**, con un 
 
 ### El entrenador 🏃‍♀️
 1. **Tus ritmos** — calcula tus zonas de ritmo (fácil, umbral, VO2máx, velocidad) desde tu 5k actual, y el ritmo del reto (4:00/km).
-2. **Plan semanal automático** — arma tu semana **alrededor de tus días de gym y fútbol**, respetando la recuperación (nunca dos días duros seguidos; nada de calidad justo antes o después del partido).
-3. **Sesiones detalladas** — intervalos, tempo y tirada larga con calentamiento, ritmos y consejos.
-4. **Periodización** — cambia el enfoque según cuánto falte para tu reto (base → VO2máx → específica → afinamiento).
-5. **Test de 5k y proyección** — registra tus tests y mira tu avance real hacia el sub-20.
+2. **Split de gym por grupos musculares** — defines qué trabajas cada día (pierna, espalda, hombro, bíceps, pecho, tríceps, core, tren superior…) y la app te sugiere ejercicios por grupo.
+3. **Plan semanal automático** — arma tu running **alrededor de tu gym y fútbol**, respetando la recuperación: nunca mete intervalos ni tempo en un **día de pierna** ni junto al partido, y combina rodajes con tus días de tren superior.
+4. **Sesiones detalladas** — intervalos, tempo y tirada larga con calentamiento, ritmos y consejos.
+5. **Periodización** — cambia el enfoque según cuánto falte para tu reto (base → VO2máx → específica → afinamiento).
+6. **Test de 5k y proyección** — registra tus tests y mira tu avance real hacia el sub-20.
 
-### El coach diario 🤖
-Combina todo: te dice **qué entrenar hoy**, **qué comer hoy**, cuánta agua, y genera **alertas inteligentes** (proteína pendiente, carbos en día duro, ritmo de pérdida de peso, toca test de 5k, etc.).
+### El coach diario 🤖 (vive y aprende)
+Combina todo: te dice **qué entrenar hoy**, **qué comer hoy**, cuánta agua, y genera **alertas inteligentes** (proteína pendiente, carbos en día duro, toca test de 5k, etc.).
+- **Aprende de ti** — según tu respuesta real de peso, ajusta tus calorías para mantenerte en el ritmo ideal de definición (ni muy rápido ni muy lento).
+- **Fotos de progreso** — guarda fotos (comprimidas, solo en tu teléfono con IndexedDB) y compáralas en el tiempo.
 
 ## 📲 Cómo instalarla en tu teléfono
 
@@ -57,8 +60,9 @@ css/styles.css          # diseño mobile-first, tema oscuro
 js/
   format.js             # formato de fechas, tiempo y ritmo (min/km)
   store.js              # datos locales (localStorage)
-  nutrition.js          # el nutricionista: calorías, macros y alimentos
-  training.js           # el entrenador: ritmos y plan semanal
+  photos.js             # fotos de progreso (IndexedDB, comprimidas)
+  nutrition.js          # el nutricionista: calorías, macros, alimentos y aprendizaje
+  training.js           # el entrenador: ritmos, split de gym y plan semanal
   coach.js              # el coach diario que combina todo
   app.js                # interfaz, navegación, onboarding y formularios
 icons/                  # iconos del PWA (generados)

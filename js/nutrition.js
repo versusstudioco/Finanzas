@@ -45,11 +45,57 @@
     return { mantenimiento: mant, objetivo: Math.max(objetivo, piso), deficitPct };
   }
 
+  // Ritmo de peso objetivo por semana (kg) según la meta.
+  function ritmoMetaSem(p) { return p.objetivo === "perder" ? -0.6 : p.objetivo === "definicion" ? -0.4 : 0; }
+
+  // ---------- Aprendizaje: ajuste adaptativo de calorías ----------
+  // La app "aprende" de tu respuesta real: si no bajas al ritmo que buscas,
+  // ajusta las calorías. 1 kg de grasa ≈ 7700 kcal → ~1100 kcal/día por kg/sem.
+  function aprendizaje(p) {
+    const meds = (window.Store ? window.Store.medicionesOrdenadas() : [])
+      .filter((m) => m.pesoKg > 0);
+    if (meds.length < 2) {
+      return { hayDato: false, ajuste: 0, texto: "Registra tu peso al menos 2 veces (con ~1–2 semanas entre medias) y ajustaré tus calorías según tu progreso real." };
+    }
+    // Usa el tramo de los últimos ~21 días (o los dos extremos disponibles)
+    const ult = meds[meds.length - 1];
+    let ref = meds[0];
+    for (let i = meds.length - 1; i >= 0; i--) {
+      if (window.Fmt.diasEntre(meds[i].date, ult.date) >= 10) { ref = meds[i]; break; }
+    }
+    const dias = Math.max(1, window.Fmt.diasEntre(ref.date, ult.date));
+    if (dias < 7) {
+      return { hayDato: false, ajuste: 0, texto: "Aún es pronto para ajustar: dame ~1 semana de datos de peso y aprendo tu ritmo." };
+    }
+    const ritmoReal = (ult.pesoKg - ref.pesoKg) / (dias / 7); // kg/semana
+    const objetivo = ritmoMetaSem(p);
+    if (p.objetivo === "mantener") {
+      return { hayDato: true, ajuste: 0, ritmoReal, objetivo, texto: `Tu peso cambia ${window.Fmt.num(ritmoReal,1)} kg/sem. Objetivo: mantener.` };
+    }
+    let ajuste = Math.round((objetivo - ritmoReal) * 1100);
+    ajuste = Math.max(-350, Math.min(350, ajuste)); // acota el ajuste
+    // redondea a 25
+    ajuste = Math.round(ajuste / 25) * 25;
+    let texto;
+    if (ritmoReal > 0.1) {
+      texto = `Estás subiendo ${window.Fmt.num(ritmoReal,1)} kg/sem. Bajé tus calorías ${Math.abs(ajuste)} kcal para retomar la definición.`;
+    } else if (ajuste <= -25) {
+      texto = `Bajas ${window.Fmt.num(Math.abs(ritmoReal),1)} kg/sem, más lento que tu meta. Ajusté −${Math.abs(ajuste)} kcal para acelerar sin perder músculo.`;
+    } else if (ajuste >= 25) {
+      texto = `Bajas ${window.Fmt.num(Math.abs(ritmoReal),1)} kg/sem, más rápido de lo ideal. Subí +${ajuste} kcal para cuidar tu músculo y tu rendimiento.`;
+    } else {
+      texto = `Vas a ${window.Fmt.num(Math.abs(ritmoReal),1)} kg/sem, justo en tu objetivo. Mantengo tus calorías. 🎯`;
+    }
+    return { hayDato: true, ajuste, ritmoReal, objetivo, texto };
+  }
+
   // Macros objetivo (g). Proteína alta para conservar músculo en déficit;
   // grasa suficiente para hormonas; el resto en carbos para rendimiento.
+  // Aplica el ajuste adaptativo aprendido de tu progreso.
   function macros(p) {
     const cal = objetivoCalorico(p);
-    const kcal = cal.objetivo;
+    const apr = aprendizaje(p);
+    const kcal = Math.max(p.sexo === "M" ? 1500 : 1300, cal.objetivo + (apr.ajuste || 0));
     // Proteína: 2.0 g/kg (definición). Grasa: 0.9 g/kg. Carbos: el resto.
     const prot = Math.round((p.objetivo === "mantener" ? 1.8 : 2.0) * p.pesoKg);
     const grasa = Math.round(0.9 * p.pesoKg);
@@ -268,7 +314,7 @@
   }
 
   window.Nutri = {
-    tmb, tdee, objetivoCalorico, macros, macrosDelDia,
+    tmb, tdee, objetivoCalorico, macros, macrosDelDia, aprendizaje,
     alimentosBase, todosLosAlimentos, buscarAlimentos,
     planEjemplo, consejos, resumenDia,
     ACTIVIDAD, GASTO_SESION,

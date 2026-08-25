@@ -14,6 +14,7 @@ const css = read("css/styles.css");
 const js = [
   read("js/format.js"),
   read("js/store.js"),
+  read("js/photos.js"),
   read("js/nutrition.js"),
   read("js/training.js"),
   read("js/coach.js"),

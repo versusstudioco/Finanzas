@@ -21,6 +21,46 @@
 
   const HARD = ["intervals", "tempo", "test5k", "carrera", "futbol"];
 
+  // ---------- Grupos musculares del gym ----------
+  const GRUPOS = {
+    pierna:  { label: "Pierna", ico: "🦵", leg: true,
+      ejercicios: ["Sentadilla", "Peso muerto", "Prensa", "Zancadas", "Curl femoral", "Gemelos"] },
+    gluteo:  { label: "Glúteo", ico: "🍑", leg: true,
+      ejercicios: ["Hip thrust", "Peso muerto rumano", "Patada de glúteo", "Abducción", "Puente de glúteo"] },
+    espalda: { label: "Espalda", ico: "🔙", leg: false,
+      ejercicios: ["Dominadas o jalón al pecho", "Remo con barra", "Remo en polea", "Face pull"] },
+    pecho:   { label: "Pecho", ico: "💪", leg: false,
+      ejercicios: ["Press banca", "Press inclinado", "Aperturas", "Fondos / flexiones"] },
+    hombro:  { label: "Hombro", ico: "🏋️‍♀️", leg: false,
+      ejercicios: ["Press militar", "Elevaciones laterales", "Elevaciones frontales", "Pájaros (posterior)"] },
+    biceps:  { label: "Bíceps", ico: "💪", leg: false,
+      ejercicios: ["Curl con barra", "Curl martillo", "Curl inclinado", "Curl en polea"] },
+    triceps: { label: "Tríceps", ico: "💪", leg: false,
+      ejercicios: ["Fondos", "Extensión en polea", "Press francés", "Patada de tríceps"] },
+    core:    { label: "Core", ico: "🧍‍♀️", leg: false,
+      ejercicios: ["Plancha", "Ab wheel", "Elevaciones de piernas", "Hollow hold", "Russian twist"] },
+    "tren superior": { label: "Tren superior", ico: "💪", leg: false,
+      ejercicios: ["Press banca", "Remo o dominadas", "Press militar", "Curl de bíceps", "Extensión de tríceps"] },
+    "full body": { label: "Full body", ico: "🏋️‍♀️", leg: true,
+      ejercicios: ["Sentadilla", "Press", "Remo", "Peso muerto", "Core"] },
+  };
+  const GRUPOS_ORDEN = ["pierna", "gluteo", "espalda", "pecho", "hombro", "biceps", "triceps", "core", "tren superior", "full body"];
+
+  function grupoLeg(grupos) {
+    return (grupos || []).some((g) => GRUPOS[g] && GRUPOS[g].leg);
+  }
+  function grupoLabel(g) { return GRUPOS[g] ? GRUPOS[g].label : g; }
+
+  // Detalle del gym de un día: grupos + ejercicios sugeridos
+  function gymDetalle(grupos) {
+    grupos = (grupos && grupos.length) ? grupos : ["tren superior"];
+    const bloques = grupos.map((g) => ({
+      grupo: g, label: grupoLabel(g), ico: (GRUPOS[g] || {}).ico || "🏋️‍♀️",
+      ejercicios: (GRUPOS[g] || {}).ejercicios || [],
+    }));
+    return { grupos, bloques, esPierna: grupoLeg(grupos) };
+  }
+
   // Ritmo objetivo del reto (seg/km). 20:00 en 5 km = 240 s/km.
   function ritmoObjetivo(p) {
     return (p.objetivoTiempoSeg || 1200) / (p.objetivoDistanciaKm || 5);
@@ -143,28 +183,33 @@
   // Coloca sesiones de calidad en los mejores días libres respetando la
   // recuperación (no dos días duros seguidos, no calidad el día después del fútbol).
   function generarSemana(p) {
-    const gym = new Set(p.diasGym || []);
-    const fut = new Set(p.diasFutbol || []);
     const desc = new Set(p.diasDescanso || []);
+    const fut = new Set(p.diasFutbol || []);
+    const gymDays = new Set((p.diasGym || []).filter((i) => !desc.has(i) && !fut.has(i)));
+    const grupos = p.gymGrupos || {};
 
     const dias = [];
     for (let i = 0; i < 7; i++) {
-      let fijo = null;
-      if (desc.has(i)) fijo = "descanso";
-      else if (fut.has(i)) fijo = "futbol";
-      else if (gym.has(i)) fijo = "gym";
-      dias.push({ idx: i, fijo, run: null });
+      dias.push({
+        idx: i,
+        descanso: desc.has(i),
+        futbol: fut.has(i),
+        gym: gymDays.has(i) ? ((grupos[i] && grupos[i].length) ? grupos[i] : ["tren superior"]) : null,
+        run: null,
+      });
     }
 
-    const esDuro = (d) => d.fijo === "futbol" || (d.run && HARD.indexOf(d.run) >= 0) || d.run === "long";
+    // Un día carga las piernas si hay fútbol o gym de pierna/glúteo/full body.
+    const legLoad = (d) => d.futbol || grupoLeg(d.gym);
     function diasDuros() {
       const s = [];
-      dias.forEach((d) => { if (esDuro(d)) s.push(d.idx); });
+      dias.forEach((d) => {
+        if (d.futbol || legLoad(d) || (d.run && HARD.indexOf(d.run) >= 0) || d.run === "long") s.push(d.idx);
+      });
       return s;
     }
-    function libres() { return dias.filter((d) => d.fijo === null && !d.run); }
     function gap(idx) {
-      const hd = diasDuros();
+      const hd = diasDuros().filter((h) => h !== idx);
       let min = 7;
       hd.forEach((h) => {
         const g = Math.min(Math.abs(h - idx), 7 - Math.abs(h - idx));
@@ -172,71 +217,66 @@
       });
       return min;
     }
+    // Candidatos para calidad de running: ni descanso, ni fútbol, ni día de pierna,
+    // y que no tengan ya un running. Se puede combinar con gym de tren superior.
+    function candidatosCalidad() {
+      return dias.filter((d) => !d.descanso && !d.futbol && !legLoad(d) && !d.run);
+    }
 
     function colocarCalidad(tipo, preferFinde) {
-      const cands = libres();
+      const cands = candidatosCalidad();
       if (!cands.length) return false;
       let best = null, bestScore = -Infinity;
       cands.forEach((d) => {
-        let score = gap(d.idx); // más separación de días duros = mejor
+        let score = gap(d.idx);
         if (preferFinde && (d.idx === 5 || d.idx === 6)) score += 1.5;
         if (preferFinde && d.idx === 4) score += 0.5;
-        // penaliza el día justo después del fútbol (piernas cansadas)
-        if (fut.has((d.idx + 6) % 7)) score -= 1.2;
-        // penaliza el día antes del fútbol (llegar cansada al partido)
-        if (fut.has((d.idx + 1) % 7)) score -= 0.6;
+        if (fut.has((d.idx + 6) % 7)) score -= 1.2; // día después del fútbol
+        if (fut.has((d.idx + 1) % 7)) score -= 0.6; // día antes del fútbol
+        if (d.gym) score -= 0.3; // preferir día libre sobre doble sesión
         if (score > bestScore) { bestScore = score; best = d; }
       });
       if (best) { best.run = tipo; return true; }
       return false;
     }
 
-    // Prioridad: intervalos, tempo, tirada larga (finde). Luego rodajes suaves.
+    // Prioridad: intervalos, tempo, tirada larga (finde). Luego un rodaje suave.
     colocarCalidad("intervals", false);
     colocarCalidad("tempo", false);
     colocarCalidad("long", true);
+    colocarCalidad("easy", false);
 
-    // Rodaje suave: 1 en un día libre restante bien separado
-    if (libres().length) colocarCalidad("easy", false);
-
-    // Rodaje suave opcional combinado con un día de gym (doble sesión) si el
-    // gym no está pegado a un día duro de running.
-    dias.forEach((d) => {
-      if (d.fijo === "gym") {
-        const antes = dias[(d.idx + 6) % 7], despues = dias[(d.idx + 1) % 7];
-        const pegadoADuro = esDuro(antes) || esDuro(despues);
-        if (!pegadoADuro && !d.combo) d.combo = "easy-opcional";
-      }
-    });
-
-    // Construir la salida legible
+    // Construir la salida legible: cada día puede tener gym + running.
     return dias.map((d) => {
       const idx = d.idx;
-      let principal, extra = null, tag = "";
-      if (d.fijo === "descanso") { principal = "descanso"; }
-      else if (d.fijo === "futbol") { principal = "futbol"; extra = "Cuenta como velocidad + agilidad. Hidrátate y come carbos antes."; }
-      else if (d.fijo === "gym") {
-        principal = "gym";
-        // sugerencia de enfoque de gym según el running del día siguiente/anterior
-        const siguiente = dias[(idx + 1) % 7];
-        if (siguiente && (siguiente.run === "intervals" || siguiente.run === "tempo")) {
-          extra = "Enfoca tren superior + core hoy (mañana hay calidad de piernas).";
-        } else {
-          extra = "Fuerza de piernas (sentadilla, peso muerto, zancadas) + core. Clave para no lesionarte y correr más económica.";
-        }
-        if (d.combo === "easy-opcional") extra += " Opcional: 20–25 min de rodaje muy suave.";
+      const gymDet = d.gym ? gymDetalle(d.gym) : null;
+      let extra = null;
+
+      // Tipo "principal" para la insignia y la nutrición (lo más duro del día)
+      let principal;
+      if (d.descanso) principal = "descanso";
+      else if (d.futbol) { principal = "futbol"; extra = "Cuenta como velocidad + agilidad. Hidrátate y come carbos antes."; }
+      else if (d.run && (HARD.indexOf(d.run) >= 0 || d.run === "long")) principal = d.run;
+      else if (d.gym) principal = "gym";
+      else if (d.run) principal = d.run;
+      else principal = "descanso";
+
+      if (gymDet) {
+        const gruposTxt = gymDet.bloques.map((b) => b.label).join(" · ");
+        extra = `Gym: ${gruposTxt}.` + (d.run ? " Combínalo con el running (deja unas horas o hazlos en distinto momento del día)." : "");
       }
-      else if (d.run) { principal = d.run; }
-      else { principal = "descanso"; }
 
       return {
         idx,
         dia: Fmt.DIAS_LARGO[(idx + 1) % 7], // idx0=lunes -> DIAS_LARGO index 1
         tipo: principal,
         info: TIPOS[principal] || TIPOS.descanso,
+        gym: d.gym,          // array de grupos, o null
+        gymDetalle: gymDet,  // {bloques, esPierna} o null
+        run: d.run,          // tipo de running del día, o null
         extra,
-        detalle: (principal === "intervals" || principal === "tempo" || principal === "long" || principal === "easy" || principal === "test5k")
-          ? detalleSesion(principal, p) : null,
+        detalle: (d.run && ["intervals", "tempo", "long", "easy", "test5k"].indexOf(d.run) >= 0)
+          ? detalleSesion(d.run, p) : null,
       };
     });
   }
@@ -301,7 +341,8 @@
   }
 
   window.Train = {
-    TIPOS, ritmoObjetivo, ritmoReferencia, zonas, fase,
+    TIPOS, GRUPOS, GRUPOS_ORDEN, grupoLabel, gymDetalle,
+    ritmoObjetivo, ritmoReferencia, zonas, fase,
     detalleSesion, generarSemana, cargaDelDia, proyeccion, consejos,
   };
 })();

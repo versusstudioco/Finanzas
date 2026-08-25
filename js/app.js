@@ -235,6 +235,7 @@
         </div>
         <div class="small muted" style="margin-top:12px">Déficit ${Fmt.pct(m.deficitPct)} sobre tu mantenimiento. Meta de agua: ~${m.agua} vasos/día.</div>
       </div>`;
+      html += aprendizajeHTML(p);
 
       // plan ejemplo por carga
       const carga = window._cargaPlan || "media";
@@ -291,12 +292,15 @@
       plan.forEach((d) => {
         const esHoy = d.idx === hoyIdx;
         const exp = expandidos.has(d.idx) || esHoy;
+        const titulo = tituloDia(d);
         html += `<div class="day-row ${esHoy?"today":""}" data-day="${d.idx}">
           <div class="dd"><div class="dn">${Fmt.DIAS[(d.idx+1)%7]}</div><div class="di">${d.info.ico}</div></div>
-          <div class="dmain"><div class="dtitle">${esc(d.info.label)}${esHoy?' · hoy':''}</div>
-          ${d.extra?`<div class="dtext">${esc(d.extra)}</div>`:(d.detalle?`<div class="dtext">${esc(d.detalle.detalle)}</div>`:"")}</div>
+          <div class="dmain"><div class="dtitle">${esc(titulo)}${esHoy?' · hoy':''}</div>
+          ${d.extra?`<div class="dtext">${esc(d.extra)}</div>`:""}
+          ${d.detalle?`<div class="dtext">🏃‍♀️ ${esc(d.detalle.detalle)}</div>`:""}</div>
           <div class="badge ${diaBadgeClase(d.tipo)}">${cargaLabel(d.tipo)}</div>
         </div>`;
+        if (exp && d.gymDetalle) html += gymDetalleHTML(d.gymDetalle);
         if (exp && d.detalle) html += sessDetalleHTML(d.detalle);
       });
       html += `</div>`;
@@ -334,6 +338,23 @@
 
   function zonaHTML(nombre, desc, seg) {
     return `<div class="zone"><div><div class="zn">${esc(nombre)}</div><div class="zd">${esc(desc)}</div></div><div class="zv">${Fmt.ritmo(seg)}</div></div>`;
+  }
+  // Título del día combinando gym + running cuando ambos existen
+  function tituloDia(d) {
+    const partes = [];
+    if (d.gymDetalle) partes.push("Gym: " + d.gymDetalle.bloques.map((b) => b.label).join(" · "));
+    if (d.run && Train.TIPOS[d.run]) partes.push(Train.TIPOS[d.run].label);
+    if (partes.length) return partes.join("  +  ");
+    return d.info.label;
+  }
+  function gymDetalleHTML(gd) {
+    let filas = gd.bloques.map((b) =>
+      `<div class="srow"><span class="sk">${b.ico} ${esc(b.label)}</span><span class="sv">${esc(b.ejercicios.join(", "))}</span></div>`).join("");
+    return `<div class="sess">
+      <div class="main-detail">🏋️‍♀️ Gimnasio — ${esc(gd.bloques.map((b)=>b.label).join(" · "))}</div>
+      ${filas}
+      <div class="stip">💡 3–4 series por ejercicio, 8–12 reps. Prioriza técnica y progresar cargas. ${gd.esPierna?"Día de piernas: no metas intervalos ni tempo hoy.":"Día de tren superior: ideal para combinar con un rodaje."}</div>
+    </div>`;
   }
   function cargaLabel(tipo) {
     const c = Train.cargaDelDia(tipo);
@@ -407,7 +428,57 @@
         </div></div>`;
     }
 
+    // Fotos de progreso (se cargan async desde IndexedDB)
+    html += `<div class="section-title">Fotos de progreso <span class="r" data-add="foto">＋ Añadir</span></div>
+      <div id="fotos-cont"><div class="empty small"><div class="big-emoji">📸</div>Cargando…</div></div>`;
+
     main.innerHTML = html;
+    cargarFotos();
+  }
+
+  // Rellena #fotos-cont de forma asíncrona
+  async function cargarFotos() {
+    const cont = document.getElementById("fotos-cont");
+    if (!cont || !window.Fotos) return;
+    let metas;
+    try { metas = await Fotos.list(); } catch (e) { cont.innerHTML = `<div class="empty small">No se pudieron cargar las fotos.</div>`; return; }
+    if (!metas.length) {
+      cont.innerHTML = `<div class="empty"><div class="big-emoji">📸</div>Aún no tienes fotos.<br>Toma una hoy y compara tu progreso con el tiempo.</div>
+        <button class="btn secondary block" data-add="foto">📸 Tomar / subir foto</button>`;
+      return;
+    }
+    // grid con placeholders; carga cada imagen
+    cont.innerHTML = `<div class="photo-grid">${metas.map((m)=>`
+      <div class="photo-cell" data-foto="${m.id}"><div class="pc-date">${Fmt.fecha(m.date)}</div></div>`).join("")}</div>
+      <div class="small muted center mt8">${metas.length} foto${metas.length>1?"s":""}. Toca una para verla en grande.</div>`;
+    metas.forEach(async (m) => {
+      const cell = cont.querySelector(`[data-foto="${m.id}"]`);
+      if (!cell) return;
+      try {
+        const url = await Fotos.url(m.id);
+        if (url) { const img = new Image(); img.src = url; img.alt = ""; cell.insertBefore(img, cell.firstChild); }
+      } catch (e) {}
+    });
+  }
+
+  // Visor de foto a pantalla completa
+  async function verFoto(id) {
+    let url, metas;
+    try { url = await Fotos.url(id); metas = await Fotos.list(); } catch (e) { return; }
+    if (!url) return;
+    const m = metas.find((x) => x.id === id) || {};
+    const div = document.createElement("div");
+    div.className = "photo-viewer";
+    div.innerHTML = `<img src="${url}" alt="">
+      <div class="pv-meta">${Fmt.fechaLarga(m.date||Fmt.hoy())}${m.nota?`<div class="small muted">${esc(m.nota)}</div>`:""}</div>
+      <div class="pv-actions"><button class="btn danger sm" id="pv-del">🗑 Borrar</button><button class="btn primary sm" id="pv-close">Cerrar</button></div>`;
+    document.body.appendChild(div);
+    const cerrar = () => { document.body.removeChild(div); URL.revokeObjectURL(url); };
+    div.addEventListener("click", (e) => { if (e.target === div) cerrar(); });
+    div.querySelector("#pv-close").onclick = cerrar;
+    div.querySelector("#pv-del").onclick = async () => {
+      if (confirm("¿Borrar esta foto?")) { await Fotos.remove(id); cerrar(); if (navActual === "progreso") cargarFotos(); }
+    };
   }
 
   // Gráfico de líneas simple (SVG) para tiempos de 5k (menor = mejor)
@@ -454,6 +525,17 @@
       <path class="line" d="${line}"/>${dots}</svg></div>`;
   }
 
+  // Tarjeta del coach que "aprende" de tu progreso de peso
+  function aprendizajeHTML(p) {
+    const a = Nutri.aprendizaje(p);
+    const emoji = !a.hayDato ? "🧠" : a.ajuste === 0 ? "🎯" : "🧠";
+    const badge = a.hayDato && a.ajuste ? `<div class="pill-stat">${a.ajuste>0?"+":""}${a.ajuste} kcal</div>` : "";
+    return `<div class="card">
+      <div class="row-between"><div class="card-title"><span class="ico">${emoji}</span>El coach aprende de ti</div>${badge}</div>
+      <div class="card-sub" style="margin-top:4px">${esc(a.texto)}</div>
+    </div>`;
+  }
+
   // ======================================================================
   //  PANTALLA: COACH (agente)
   // ======================================================================
@@ -493,6 +575,7 @@
 
     // Análisis / alertas
     html += `<div class="section-title">3. Análisis del día</div>`;
+    html += aprendizajeHTML(p);
     if (alertas.length) alertas.forEach((a) => (html += alertaHTML(a)));
     else html += `<div class="alert good"><div class="ico">🎉</div><div><div class="a-title">Todo en orden</div><div class="a-text">Vas por buen camino. Sigue con tu plan de hoy.</div></div></div>`;
 
@@ -508,7 +591,35 @@
       <button class="btn secondary block mb8" data-add="comida">🥗 Comida</button>
       <button class="btn secondary block mb8" data-add="entreno">🏃‍♀️ Entrenamiento</button>
       <button class="btn secondary block mb8" data-add="test">⏱️ Test de 5k</button>
-      <button class="btn secondary block" data-add="peso">⚖️ Peso y medidas</button>`);
+      <button class="btn secondary block mb8" data-add="peso">⚖️ Peso y medidas</button>
+      <button class="btn secondary block" data-add="foto">📸 Foto de progreso</button>`);
+  }
+
+  function sheetFoto() {
+    openSheet(`<h2>📸 Foto de progreso</h2>
+      <div class="small muted mb8">Toma una foto (o sube una de tu galería). Se guarda solo en tu teléfono, comprimida. Ideal: misma pose, luz y ropa cada vez.</div>
+      <div class="field"><label>Foto</label><input id="f-file" type="file" accept="image/*" capture="environment"></div>
+      <div class="field"><label>Fecha</label><input id="f-date" type="date" value="${Fmt.ymd(Fmt.hoy())}"></div>
+      <div class="field"><label>Nota</label><input id="f-nota" type="text" placeholder="Ej: semana 4, en ayunas"></div>
+      <button class="btn primary block" id="f-save">Guardar foto</button>
+      <div class="hint" id="f-status"></div>`);
+    document.getElementById("f-save").addEventListener("click", async () => {
+      const file = document.getElementById("f-file").files[0];
+      if (!file) { document.getElementById("f-status").textContent = "Elige una foto primero."; return; }
+      const btn = document.getElementById("f-save");
+      btn.textContent = "Guardando…"; btn.disabled = true;
+      try {
+        await Fotos.add(file, {
+          date: document.getElementById("f-date").value || Fmt.ymd(Fmt.hoy()),
+          nota: document.getElementById("f-nota").value.trim(),
+        });
+        closeSheet();
+        if (navActual !== "progreso") irA("progreso"); else render();
+      } catch (e) {
+        document.getElementById("f-status").textContent = "No se pudo guardar la foto en este dispositivo.";
+        btn.textContent = "Guardar foto"; btn.disabled = false;
+      }
+    });
   }
 
   function sheetComida(comidaTipo) {
@@ -662,8 +773,7 @@
 
   function sheetAjustes() {
     const p = Store.get().profile;
-    const diasHTML = (sel, campo) => `<div class="day-toggles" data-days="${campo}">
-      ${["L","M","M","J","V","S","D"].map((d,i)=>`<div class="dt ${sel.includes(i)?"active":""}" data-di="${i}">${d}</div>`).join("")}</div>`;
+    const wk = planActual(p);
     openSheet(`<h2>⚙️ Ajustes</h2>
       <div class="field"><label>Nombre</label><input id="s-nombre" type="text" value="${esc(p.nombre)}" placeholder="Tu nombre"></div>
       <div class="field-row">
@@ -684,9 +794,8 @@
       </select></div>
       <div class="divider"></div>
       <div class="section-title" style="margin-top:0">Tu semana</div>
-      <div class="field"><label>Días de gimnasio</label>${diasHTML(p.diasGym,"gym")}</div>
-      <div class="field"><label>Días de fútbol</label>${diasHTML(p.diasFutbol,"futbol")}</div>
-      <div class="field"><label>Días de descanso total</label>${diasHTML(p.diasDescanso,"descanso")}</div>
+      <div class="small muted mb8">Elige qué haces cada día. En los días de gym, marca los grupos musculares. El running se arma solo alrededor.</div>
+      <div id="week-editor">${weekEditorHTML(wk)}</div>
       <div class="divider"></div>
       <div class="section-title" style="margin-top:0">El reto</div>
       <div class="field-row">
@@ -702,19 +811,36 @@
       <button class="btn danger block mt8" id="s-reset">Borrar todos mis datos</button>
       <div class="small muted center mt16">Rayada · 100% privada. Todo se guarda solo en tu teléfono.</div>`);
 
-    // toggles de días
-    const seleccion = { gym: new Set(p.diasGym), futbol: new Set(p.diasFutbol), descanso: new Set(p.diasDescanso) };
-    overlay.querySelectorAll("[data-days]").forEach((grp) => {
-      const campo = grp.dataset.days;
-      grp.addEventListener("click", (e) => {
-        const dt = e.target.closest("[data-di]"); if (!dt) return;
-        const i = +dt.dataset.di;
-        if (seleccion[campo].has(i)) seleccion[campo].delete(i); else seleccion[campo].add(i);
-        dt.classList.toggle("active");
+    // editor de la semana (tipo por día + grupos de gym)
+    overlay.querySelectorAll("[data-de]").forEach((row) => {
+      const i = +row.dataset.de;
+      row.addEventListener("click", (e) => {
+        const tt = e.target.closest("[data-detipo]");
+        if (tt) {
+          wk[i].tipo = tt.dataset.detipo;
+          row.querySelectorAll("[data-detipo]").forEach((b) => b.classList.toggle("active", b === tt));
+          const gr = row.querySelector(".de-grupos");
+          if (gr) gr.style.display = wk[i].tipo === "gym" ? "" : "none";
+          return;
+        }
+        const gg = e.target.closest("[data-degrupo]");
+        if (gg) {
+          const g = gg.dataset.degrupo;
+          if (wk[i].grupos.has(g)) wk[i].grupos.delete(g); else wk[i].grupos.add(g);
+          gg.classList.toggle("active");
+          return;
+        }
       });
     });
 
     document.getElementById("s-save").addEventListener("click", () => {
+      const diasGym = [], diasFutbol = [], diasDescanso = [], gymGrupos = {};
+      for (let i = 0; i < 7; i++) {
+        const d = wk[i];
+        if (d.tipo === "gym") { diasGym.push(i); gymGrupos[i] = [...d.grupos]; }
+        else if (d.tipo === "futbol") diasFutbol.push(i);
+        else if (d.tipo === "descanso") diasDescanso.push(i);
+      }
       Store.updateProfile({
         nombre: document.getElementById("s-nombre").value.trim(),
         sexo: document.getElementById("s-sexo").value,
@@ -723,8 +849,7 @@
         pesoKg: +document.getElementById("s-peso").value || p.pesoKg,
         objetivo: document.getElementById("s-obj").value,
         nivelActividad: document.getElementById("s-act").value,
-        diasGym: [...seleccion.gym].sort(), diasFutbol: [...seleccion.futbol].sort(),
-        diasDescanso: [...seleccion.descanso].sort(),
+        diasGym, diasFutbol, diasDescanso, gymGrupos,
         objetivoTiempoSeg: Fmt.parseTiempo(document.getElementById("s-reto").value) || p.objetivoTiempoSeg,
         fechaReto: document.getElementById("s-fecha").value,
       });
@@ -742,6 +867,36 @@
     const opts = [["sedentario","Sedentaria (poco movimiento)"],["ligero","Ligera (1–2 entrenos/sem)"],
       ["moderado","Moderada (3–4/sem)"],["alto","Alta (5–6/sem: corres + gym + fútbol)"],["atleta","Atleta (2/día)"]];
     return opts.map(([v,l])=>`<option value="${v}" ${v===sel?"selected":""}>${l}</option>`).join("");
+  }
+  // Estado editable de la semana a partir del perfil
+  function planActual(p) {
+    const gym = new Set(p.diasGym || []), fut = new Set(p.diasFutbol || []), desc = new Set(p.diasDescanso || []);
+    const gr = p.gymGrupos || {};
+    const wk = {};
+    for (let i = 0; i < 7; i++) {
+      let tipo = "libre";
+      if (desc.has(i)) tipo = "descanso";
+      else if (fut.has(i)) tipo = "futbol";
+      else if (gym.has(i)) tipo = "gym";
+      const grupos = new Set(tipo === "gym" ? ((gr[i] && gr[i].length) ? gr[i] : ["tren superior"]) : (gr[i] || []));
+      wk[i] = { tipo, grupos };
+    }
+    return wk;
+  }
+  function weekEditorHTML(wk) {
+    const tipos = [["gym","🏋️","Gym"],["futbol","⚽","Fútbol"],["descanso","😴","Descanso"],["libre","·","Libre"]];
+    let h = "";
+    for (let i = 0; i < 7; i++) {
+      const d = wk[i];
+      h += `<div class="day-edit" data-de="${i}">
+        <div class="de-top"><span class="de-day">${Fmt.DIAS_LARGO[(i+1)%7]}</span>
+        <div class="de-types">${tipos.map(([v,ic,l])=>`<button class="de-t ${d.tipo===v?"active":""}" data-detipo="${v}">${ic} ${l}</button>`).join("")}</div></div>
+        <div class="de-grupos" ${d.tipo==="gym"?"":'style="display:none"'}>
+          ${Train.GRUPOS_ORDEN.map((g)=>`<div class="chip2 ${d.grupos.has(g)?"active":""}" data-degrupo="${g}">${esc(Train.grupoLabel(g))}</div>`).join("")}
+        </div>
+      </div>`;
+    }
+    return h;
   }
 
   function exportarDatos() {
@@ -840,9 +995,9 @@
       titulo = "Tu semana";
       const dd = (sel, campo) => `<div class="day-toggles" data-odays="${campo}">
         ${["L","M","M","J","V","S","D"].map((x,i)=>`<div class="dt ${(sel||[]).includes(i)?"active":""}" data-di="${i}">${x}</div>`).join("")}</div>`;
-      cuerpo = `<div class="small muted mb8">Marca los días que ya tienes fijos. Yo armo el running alrededor, respetando tu recuperación.</div>
-        <div class="field"><label>🏋️‍♀️ Días de gimnasio</label>${dd(d.diasGym||[0,4],"gym")}</div>
-        <div class="field"><label>⚽ Días de fútbol</label>${dd(d.diasFutbol||[2],"futbol")}</div>
+      cuerpo = `<div class="small muted mb8">Marca los días que ya tienes fijos. Yo armo el running alrededor, respetando tu recuperación. Los grupos musculares del gym los defines luego en ⚙️ Ajustes.</div>
+        <div class="field"><label>🏋️‍♀️ Días de gimnasio</label>${dd(d.diasGym||[0,1,2,3,4],"gym")}</div>
+        <div class="field"><label>⚽ Días de fútbol</label>${dd(d.diasFutbol||[],"futbol")}</div>
         <div class="field"><label>😴 Descanso total</label>${dd(d.diasDescanso||[6],"descanso")}</div>`;
     }
     if (onb.paso === 5) {
@@ -878,7 +1033,7 @@
     });
     // toggles de días onboarding
     const oseleccion = {
-      gym: new Set(d.diasGym || [0,4]), futbol: new Set(d.diasFutbol || [2]), descanso: new Set(d.diasDescanso || [6]),
+      gym: new Set(d.diasGym || [0,1,2,3,4]), futbol: new Set(d.diasFutbol || []), descanso: new Set(d.diasDescanso || [6]),
     };
     onbRoot.querySelectorAll("[data-odays]").forEach((grp) => {
       const campo = grp.dataset.odays;
@@ -924,11 +1079,16 @@
   }
   function finalizar() {
     const d = onb.datos;
+    const diasGym = d.diasGym || [0,1,2,3,4];
+    // split por defecto; se mantiene para los días de gym elegidos
+    const splitDefault = { 0:["pierna"], 1:["espalda","hombro","biceps"], 2:["pecho","triceps"], 3:["pierna"], 4:["tren superior"], 5:["full body"], 6:["full body"] };
+    const gymGrupos = {};
+    diasGym.forEach((i) => { gymGrupos[i] = splitDefault[i] || ["tren superior"]; });
     Store.updateProfile({
       nombre: d.nombre || "", sexo: d.sexo || "F", edad: d.edad || 28,
       alturaCm: d.alturaCm || 165, pesoKg: d.pesoKg || 62,
       objetivo: d.objetivo || "definicion", nivelActividad: d.nivelActividad || "alto",
-      diasGym: d.diasGym || [0,4], diasFutbol: d.diasFutbol || [2], diasDescanso: d.diasDescanso || [6],
+      diasGym, diasFutbol: d.diasFutbol || [], diasDescanso: d.diasDescanso || [6], gymGrupos,
       objetivoTiempoSeg: Fmt.parseTiempo(d.reto || "20:00") || 1200,
       fechaReto: d.fechaReto || "",
     });
@@ -953,8 +1113,10 @@
       else if (tipo === "entreno") sheetEntreno();
       else if (tipo === "test") sheetTest5k();
       else if (tipo === "peso") sheetPeso();
+      else if (tipo === "foto") sheetFoto();
       return;
     }
+    const foto = e.target.closest("[data-foto]"); if (foto) { verFoto(foto.dataset.foto); return; }
     const nt = e.target.closest("[data-nt]"); if (nt) { nutTab = nt.dataset.nt; render(); return; }
     const et = e.target.closest("[data-et]"); if (et) { entTab = et.dataset.et; render(); return; }
     const carga = e.target.closest("[data-carga]"); if (carga) { window._cargaPlan = carga.dataset.carga; render(); return; }

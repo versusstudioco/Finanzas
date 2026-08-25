@@ -15,9 +15,17 @@
       objetivo: "definicion", // definicion | perder | mantener
       nivelActividad: "alto", // sedentario | ligero | moderado | alto | atleta
       // Compromisos fijos de la semana (0=lun ... 6=dom)
-      diasGym: [0, 4],       // lun, vie
-      diasFutbol: [2],       // mié
+      diasGym: [0, 1, 2, 3, 4], // lun a vie
+      diasFutbol: [],        // sin fútbol por defecto (configúralo en Ajustes)
       diasDescanso: [6],     // dom
+      // Split de gym: grupos musculares por día (0=lun ... 6=dom)
+      gymGrupos: {
+        0: ["pierna"],
+        1: ["espalda", "hombro", "biceps"],
+        2: ["pecho", "triceps"],
+        3: ["pierna"],
+        4: ["tren superior"],
+      },
       // Reto de running
       objetivoTiempoSeg: 1200, // 20:00 en 5k
       objetivoDistanciaKm: 5,
