@@ -3,6 +3,7 @@ name: Deploy PWA to GitHub Pages
 on:
   push:
     branches:
+      - claude/nutrition-running-app-obm7rh
       - claude/personal-finance-app-egdjkw
       - main
   workflow_dispatch:
